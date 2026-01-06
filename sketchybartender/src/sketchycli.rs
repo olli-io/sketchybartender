@@ -38,16 +38,16 @@ fn print_usage() {
 
 Commands:
   on-brew-clicked      - Trigger brew upgrade
-  on-focus-change [app] - Trigger front app update (app from args or $INFO)
-  send <message>       - Send arbitrary message to daemon
-  on-teams-clicked     - Open Microsoft Teams
-  on-volume-change [level] - Trigger volume update (level from args or $INFO)
-  on-workspace-change  - Trigger workspace update
+  on-focus-changed     - Trigger front app update (app from args or $INFO)
+  on-teams-clicked     - Opens Microsoft Teams and triggers a refresh
+  on-volume-changed [level] - Trigger volume update (level from args or $INFO)
+  on-workspace-changed  - Trigger workspace update
   on-workspace-clicked - Navigate to workspace (uses $NAME, $BUTTON)
 
 Note: Clock, battery, brew, and teams updates are now handled automatically
       by the sketchybartender daemon. Update intervals can be configured in
       ~/.config/sketchybar/sketchybartenderrc"
+      
     );
 }
 
@@ -60,12 +60,13 @@ fn main() {
     }
 
     match args[1].as_str() {
+
         "on-brew-clicked" => {
-            send_message("brew-upgrade");
+            send_message("on-brew-clicked");
         }
 
-        "on-focus-change" => {
-            send_message("focus-change");
+        "on-focus-changed" => {
+            send_message("on-focus-changed");
         }
 
         "on-teams-clicked" => {
@@ -76,7 +77,7 @@ fn main() {
                 .spawn();
 
             // Immediate refresh to show responsiveness
-            send_message("teams");
+            send_message("trigger-teams-refresh");
 
             // Refresh multiple times to catch state changes:
             // - Process start/stop (teams launching or quitting)
@@ -84,37 +85,29 @@ fn main() {
             std::thread::spawn(|| {
                 // Refresh at 1s (catch quick process start)
                 std::thread::sleep(std::time::Duration::from_secs(1));
-                send_message("teams");
+                send_message("trigger-teams-refresh");
 
-                // Refresh at 3s (process should be fully started by now)
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                send_message("teams");
-
-                // Refresh at 6s (notifications should be cleared by now)
+                // Refresh at 6s (notifications should be cleared by now if app was not running)
                 std::thread::sleep(std::time::Duration::from_secs(3));
-                send_message("teams");
-
-                // Final refresh at 10s (ensure all state changes are captured)
-                std::thread::sleep(std::time::Duration::from_secs(4));
-                send_message("teams");
+                send_message("trigger-teams-refresh");
             });
         }
 
-        "on-volume-change" => {
+        "on-volume-changed" => {
             // Get volume level from args or $INFO environment variable
             let vol = args.get(2)
                 .map(|s| s.to_string())
                 .or_else(|| env::var("INFO").ok());
 
             if let Some(v) = vol {
-                send_message(&format!("volume {}", v));
+                send_message(&format!("on-volume-changed {}", v));
             } else {
-                send_message("volume");
+                send_message("on-volume-changed");
             }
         }
 
-        "on-workspace-change" => {
-            send_message("workspace-change");
+        "on-workspace-changed" => {
+            send_message("on-workspace-changed");
         }
 
         "on-workspace-clicked" => {
@@ -130,17 +123,6 @@ fn main() {
                         .spawn();
                 }
             }
-        }
-
-        "send" => {
-            // Send arbitrary message to daemon
-            if args.len() < 3 {
-                eprintln!("Error: 'send' command requires a message argument");
-                print_usage();
-                std::process::exit(1);
-            }
-            let message = args[2..].join(" ");
-            send_message(&message);
         }
 
         "help" | "--help" | "-h" => {

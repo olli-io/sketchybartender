@@ -1,35 +1,31 @@
 # Sketchybar configuration with Rust helper daemon
 # The daemon handles all plugin logic for better performance
 
-CLI_BIN="$HOME/.local/bin/sketchycli"
-BARTENDER_BIN="$HOME/.local/bin/sketchybartender"
-BOUNCER_BIN="$HOME/.local/bin/sketchybarbouncer"
-
 ##### Start Helper Daemon #####
 # Kill any existing helper and start fresh
 pkill -f sketchybartender 2>/dev/null
 pkill -f sketchybarbouncer 2>/dev/null
-"$BARTENDER_BIN" &
-"$BOUNCER_BIN" &
-
-# Give daemon time to initialize
 sleep 0.2
 
+# Start the daemons with full paths and proper backgrounding
+nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
+nohup "${HOME}/.local/bin/sketchybarbouncer" >/dev/null 2>&1 &
+
 ##### Bar Appearance #####
-sketchybar --bar position=top height=32 blur_radius=0 color=0x40000000 margin=0
+sketchybar --bar position=top height=36 blur_radius=0 color=0x40000000 margin=0
 
 ##### Changing Defaults #####
 default=(
   padding_left=0
   padding_right=5
-  icon.font="Hack Nerd Font:Bold:17.0"
-  label.font="Hack Nerd Font:Bold:14.0"
+  icon.font="Hack Nerd Font:Bold:15.0"
+  label.font="Hack Nerd Font:Bold:13.0"
   icon.color=0xffffffff
   label.color=0xffffffff
-  icon.padding_left=4
-  icon.padding_right=4
-  label.padding_left=4
-  label.padding_right=4
+  icon.padding_left=3
+  icon.padding_right=3
+  label.padding_left=3
+  label.padding_right=3
 )
 sketchybar --default "${default[@]}"
 
@@ -57,7 +53,6 @@ for workspace in {1..9}; do
 done
 
 ##### Adding Left Items #####
-# Front app updates are now handled directly by aerospace → sketchybartender
 sketchybar --add item front_app left \
            --set front_app \
            icon.font="sketchybar-app-font:Regular:16.0" \
@@ -71,18 +66,15 @@ sketchybar --add item front_app left \
 sketchybar --add item clock right \
            --set clock padding_left=0 padding_right=0 \
            --add item volume right \
-           --set volume script="$CLI_BIN on-volume-change" \
+           --set volume script="$HOME/.local/bin/sketchycli on-volume-changed" \
            --subscribe volume volume_change \
            --add item battery right \
-           --subscribe battery system_woke power_source_change \
            --add item brew right \
-           --set brew click_script="$CLI_BIN on-brew-clicked" \
+           --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked" \
            --subscribe brew mouse.clicked \
            --add item teams right \
-           --set teams icon="󰊻" icon.color=0xffffffff \
-           background.border_color=0xff2a2c3a background.border_width=1 \
-           background.corner_radius=5 background.height=22 \
-           click_script="$CLI_BIN on-teams-clicked" \
+           --set teams icon="󰊻" icon.color=0xffffffff icon.font="Hack Nerd Font:Regular:18.0" \
+           click_script="sketchycli on-teams-clicked" \
            --subscribe teams mouse.clicked
 
 ##### Force all scripts to run the first time #####

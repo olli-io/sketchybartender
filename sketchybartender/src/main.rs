@@ -11,7 +11,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::fs;
 
 use monitor_map::MonitorMapper;
@@ -22,8 +22,6 @@ use sketchybar::SketchybarBatch;
 struct DaemonState {
     /// Current front app (for deduplication)
     front_app: String,
-    /// Last workspace refresh time (for debouncing)
-    last_workspace_refresh: Option<Instant>,
     /// Monitor mapper for workspace filtering
     monitor_mapper: MonitorMapper,
 }
@@ -32,23 +30,11 @@ impl Default for DaemonState {
     fn default() -> Self {
         Self {
             front_app: String::new(),
-            last_workspace_refresh: None,
             monitor_mapper: MonitorMapper::new(),
         }
     }
 }
 
-/// Handle incoming messages from sketchycli
-///
-/// CLI command → daemon message → handler mapping:
-/// - `sketchycli send clock` → "clock" → handle_clock()
-/// - `sketchycli send battery` → "battery" → handle_battery()
-/// - `sketchycli send volume [level]` → "volume [level]" → handle_volume(level)
-/// - `sketchycli on-focus-change [app]` → "focus-change [app]" → handle_front_app(app)
-/// - `sketchycli on-workspace-change` → "workspace-change" → handle_workspace_refresh()
-/// - `sketchycli send brew` → "brew" → handle_brew()
-/// - `sketchycli on-brew-clicked` → "brew-upgrade" → handle_brew_upgrade()
-/// - `sketchycli on-teams-clicked` → "teams" → handle_teams()
 fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
     let reader = BufReader::new(stream);
 
@@ -60,19 +46,22 @@ fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
 
         let parts: Vec<&str> = line.trim().splitn(3, ' ').collect();
         match parts.get(0).map(|s| *s) {
-            Some("clock") => handle_clock(),
-            Some("battery") => handle_battery(),
-            Some("volume") => {
+            Some("on-volume-changed") => {
                 let vol = parts.get(1).and_then(|s| s.parse().ok());
-                handle_volume(vol);
+                handle_volume_refresh(vol);
             }
-            Some("focus-change") => {
-                handle_front_app(None, &state);
+            Some("on-focus-changed") => handle_focus_refresh(None, &state),
+            Some("on-workspace-changed") => handle_workspace_refresh(&state),
+            Some("on-brew-clicked") => handle_brew_upgrade(),
+            Some("trigger-teams-refresh") => handle_teams_refresh(),
+            Some("on-display-configuration-changed") => handle_workspace_refresh(&state),
+            Some("on-power-source-changed") => handle_battery_refresh(),
+            Some("on-system-wake") => {
+                handle_workspace_refresh(&state);
+                handle_battery_refresh();
+                handle_clock_refresh();
+                handle_teams_refresh();
             }
-            Some("workspace-change") => handle_workspace_refresh(&state),
-            Some("brew") => handle_brew(),
-            Some("brew-upgrade") => handle_brew_upgrade(),
-            Some("teams") => handle_teams(),
             _ => {
                 eprintln!("Unknown message: {}", line);
             }
@@ -80,14 +69,14 @@ fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
     }
 }
 
-fn handle_clock() {
+fn handle_clock_refresh() {
     let time = providers::get_clock();
     if let Err(e) = sketchybar::update_clock(&time) {
         eprintln!("Failed to update clock: {}", e);
     }
 }
 
-fn handle_battery() {
+fn handle_battery_refresh() {
     if let Some(info) = providers::get_battery() {
         if let Err(e) = sketchybar::update_battery(info.icon(), info.percentage) {
             eprintln!("Failed to update battery: {}", e);
@@ -95,14 +84,14 @@ fn handle_battery() {
     }
 }
 
-fn handle_brew() {
+fn handle_brew_refresh() {
     let info = providers::get_brew_outdated();
     if let Err(e) = sketchybar::update_brew(info.icon(), info.formulae, info.casks) {
         eprintln!("Failed to update brew: {}", e);
     }
 }
 
-fn handle_teams() {
+fn handle_teams_refresh() {
     let info = providers::get_teams_notifications();
     if let Err(e) = sketchybar::update_teams(
         info.icon(),
@@ -160,11 +149,11 @@ fn handle_brew_upgrade() {
         if let Err(e) = sketchybar::set_item("brew", &[("label.y_offset", "0")]) {
             eprintln!("Failed to reset brew offset: {}", e);
         }
-        handle_brew();
+        handle_brew_refresh();
     });
 }
 
-fn handle_volume(vol: Option<u8>) {
+fn handle_volume_refresh(vol: Option<u8>) {
     let info = if let Some(v) = vol {
         providers::VolumeInfo { percentage: v, muted: v == 0 }
     } else if let Some(v) = providers::get_volume() {
@@ -178,7 +167,7 @@ fn handle_volume(vol: Option<u8>) {
     }
 }
 
-fn handle_front_app(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
+fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
     let app = app.or_else(|| aerospace::get_focused_app());
     
     if let Some(app_name) = &app {
@@ -199,36 +188,18 @@ fn handle_front_app(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
 }
 
 fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
-
-    // Debounce: skip if called within 100ms of last refresh
-    const DEBOUNCE_MS: u64 = 100;
-    let should_refresh = if let Ok(mut s) = state.lock() {
-        let now = Instant::now();
-        if let Some(last) = s.last_workspace_refresh {
-            if now.duration_since(last).as_millis() < DEBOUNCE_MS as u128 {
-                eprintln!("Debouncing workspace refresh (too soon)");
-                false
-            } else {
-                s.last_workspace_refresh = Some(now);
-                true
-            }
-        } else {
-            s.last_workspace_refresh = Some(now);
-            true
-        }
-    } else {
-        return;
-    };
-
-    if !should_refresh {
-        return;
-    }
+    // Small delay to let aerospace settle its internal state
+    // This helps avoid race conditions when aerospace is still updating
+    thread::sleep(Duration::from_millis(10));
 
     let monitor_mappings = if let Ok(s) = state.lock() {
         s.monitor_mapper.get_mappings()
     } else {
         return;
     };
+
+    // Check if there's only one monitor (native laptop display)
+    let is_single_monitor = monitor_mappings.len() == 1;
 
     let infos = aerospace::get_workspace_infos();
 
@@ -295,16 +266,25 @@ fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
                         ("display", &display_id.to_string()),
                     ]);
                 } else {
-                    // Empty and not focused - hide
-                    batch.set(&item_name, &[
-                        ("label", &format!("\u{f444} {}", ws_id)),
-                        ("label.color", "0xffffffff"),
-                        ("icon.color", "0xffffffff"),
-                        ("drawing", "on"),
-                        ("icon.drawing", "off"),
-                        ("background.drawing", "off"),
-                        ("display", &display_id.to_string()),
-                    ]);
+                    // Empty and not focused
+                    if is_single_monitor {
+                        // Hide completely when single monitor
+                        batch.set(&item_name, &[
+                            ("drawing", "off"),
+                            ("display", &display_id.to_string()),
+                        ]);
+                    } else {
+                        // Show when multiple monitors
+                        batch.set(&item_name, &[
+                            ("label", &format!("\u{f444} {}", ws_id)),
+                            ("label.color", "0xffffffff"),
+                            ("icon.color", "0xffffffff"),
+                            ("drawing", "on"),
+                            ("icon.drawing", "off"),
+                            ("background.drawing", "off"),
+                            ("display", &display_id.to_string()),
+                        ]);
+                    }
                 }
                 found = true;
                 break; // Only update on the correct display
@@ -312,7 +292,66 @@ fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         }
 
         if !found {
-            eprintln!("Warning: No display found for workspace {} (monitor {})", ws_id, workspace_monitor);
+            
+            // Fallback: try to update on display 1 if no mapping found
+            // This ensures the workspace is at least visible somewhere
+            let batch = batches.entry(1).or_insert_with(SketchybarBatch::new);
+            
+            if has_apps && is_focused {
+                batch.set(&item_name, &[
+                    ("label", &ws_id),
+                    ("label.color", "0xff1d2021"),
+                    ("icon", icons),
+                    ("icon.color", "0xff1d2021"),
+                    ("icon.drawing", "on"),
+                    ("drawing", "on"),
+                    ("background.drawing", "on"),
+                    ("background.color", bg_color),
+                    ("display", "1"),
+                ]);
+            } else if has_apps {
+                batch.set(&item_name, &[
+                    ("label", &ws_id),
+                    ("label.color", "0xffffffff"),
+                    ("icon.color", "0xffffffff"),
+                    ("icon", icons),
+                    ("icon.drawing", "on"),
+                    ("drawing", "on"),
+                    ("background.drawing", "off"),
+                    ("display", "1"),
+                ]);
+            } else if is_focused {
+                batch.set(&item_name, &[
+                    ("label", &format!("\u{f444} {}", ws_id)),
+                    ("label.color", "0xff1d2021"),
+                    ("icon.color", "0xff1d2021"),
+                    ("drawing", "on"),
+                    ("icon.drawing", "off"),
+                    ("background.drawing", "on"),
+                    ("background.color", bg_color),
+                    ("display", "1"),
+                ]);
+            } else {
+                // Empty and not focused
+                if is_single_monitor {
+                    // Hide completely when single monitor
+                    batch.set(&item_name, &[
+                        ("drawing", "off"),
+                        ("display", "1"),
+                    ]);
+                } else {
+                    // Show when multiple monitors
+                    batch.set(&item_name, &[
+                        ("label", &format!("\u{f444} {}", ws_id)),
+                        ("label.color", "0xffffffff"),
+                        ("icon.color", "0xffffffff"),
+                        ("drawing", "on"),
+                        ("icon.drawing", "off"),
+                        ("background.drawing", "off"),
+                        ("display", "1"),
+                    ]);
+                }
+            }
         }
     }
 
@@ -338,11 +377,6 @@ fn get_socket_path() -> PathBuf {
 fn main() {
     // Load configuration
     let config = config::Config::load();
-    println!("Loaded configuration:");
-    println!("  Clock interval: {}s", config.clock_interval);
-    println!("  Battery interval: {}s", config.battery_interval);
-    println!("  Brew interval: {}s", config.brew_interval);
-    println!("  Teams interval: {}s", config.teams_interval);
 
     let socket_path = get_socket_path();
 
@@ -363,18 +397,18 @@ fn main() {
 
     // Initial refresh
     handle_workspace_refresh(&state);
-    handle_clock();
-    handle_battery();
-    handle_front_app(None, &state);
-    handle_brew();
-    handle_teams();
+    handle_clock_refresh();
+    handle_battery_refresh();
+    handle_focus_refresh(None, &state);
+    handle_brew_refresh();
+    handle_teams_refresh();
 
     // Spawn timer threads for periodic updates using configured intervals
     let clock_interval = config.clock_interval;
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_secs(clock_interval));
-            handle_clock();
+            handle_clock_refresh();
         }
     });
 
@@ -382,7 +416,7 @@ fn main() {
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_secs(battery_interval));
-            handle_battery();
+            handle_battery_refresh();
         }
     });
 
@@ -390,7 +424,7 @@ fn main() {
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_secs(brew_interval));
-            handle_brew();
+            handle_brew_refresh();
         }
     });
 
@@ -398,7 +432,7 @@ fn main() {
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_secs(teams_interval));
-            handle_teams();
+            handle_teams_refresh();
         }
     });
 

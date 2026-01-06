@@ -4,21 +4,21 @@ use std::process::Command;
 #[derive(Debug, Clone)]
 pub struct BatteryInfo {
     pub percentage: u8,
-    pub charging: bool,
+    pub is_charging: bool,
 }
 
 impl BatteryInfo {
     /// Get the appropriate icon for the battery state
     pub fn icon(&self) -> &'static str {
-        if self.charging {
-            return "\u{f0e7}"; // nf-md-battery_charging_50
+        if self.is_charging {
+            return "\u{f0e7}"; 
         }
         match self.percentage {
-            90..=100 => "\u{f240}", // nf-md-battery_high
-            70..=89 => "\u{f241}",  // nf-md-battery_medium
-            40..=69 => "\u{f242}",  // nf-md-battery_medium
-            10..=39 => "\u{f243}",  // nf-md-battery_low
-            _ => "\u{f244}",        // nf-md-battery_outline
+            90..=100 => "\u{f240}",
+            70..=89 => "\u{f241}",
+            40..=69 => "\u{f242}",
+            10..=39 => "\u{f243}", 
+            _ => "\u{f244}",        
         }
     }
 }
@@ -42,9 +42,9 @@ pub fn get_battery() -> Option<BatteryInfo> {
         })?;
 
     // Check if charging
-    let charging = stdout.contains("AC Power");
+    let is_charging = stdout.contains("AC Power");
 
-    Some(BatteryInfo { percentage, charging })
+    Some(BatteryInfo { percentage, is_charging })
 }
 
 /// Volume information
@@ -122,11 +122,7 @@ impl BrewInfo {
 
     /// Get the appropriate icon
     pub fn icon(&self) -> &'static str {
-        if self.total() == 0 {
-            "󰏗" // nf-md-package_variant (checkmark style)
-        } else {
-            "󰏔" // nf-md-package_variant_closed (needs attention)
-        }
+        "\u{f487}"
     }
 }
 
@@ -276,10 +272,10 @@ mod tests {
         let high = BatteryInfo { percentage: 95, charging: false };
         assert_eq!(high.icon(), "󱊣");
 
-        let charging = BatteryInfo { percentage: 50, charging: true };
-        assert_eq!(charging.icon(), "\u{f0e7}"); // nf-fa-bolt
+        let is_charging = BatteryInfo { percentage: 50, is_charging: true };
+        assert_eq!(is_charging.icon(), "\u{f0e7}"); // nf-fa-bolt
 
-        let low = BatteryInfo { percentage: 5, charging: false };
+        let low = BatteryInfo { percentage: 5, is_charging: false };
         assert_eq!(low.icon(), "󰂎");
     }
 

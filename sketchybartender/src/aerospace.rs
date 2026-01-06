@@ -104,9 +104,20 @@ pub fn get_workspace_monitors() -> HashMap<String, u32> {
 
 /// Get workspace information for all workspaces 1-9
 pub fn get_workspace_infos() -> HashMap<String, WorkspaceInfo> {
-    let focused = get_focused_workspace().unwrap_or_default();
-    let windows = get_all_windows();
-    let monitors = get_workspace_monitors();
+    // Query all aerospace state at once to get consistent snapshot
+    // Retry once if focused workspace is empty (might indicate aerospace is still updating)
+    let mut focused = get_focused_workspace().unwrap_or_default();
+    let mut windows = get_all_windows();
+    let mut monitors = get_workspace_monitors();
+    
+    // If focused workspace is empty, retry once after a short delay
+    if focused.is_empty() {
+        eprintln!("[AEROSPACE] Warning: focused workspace empty, retrying...");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        focused = get_focused_workspace().unwrap_or_default();
+        windows = get_all_windows();
+        monitors = get_workspace_monitors();
+    }
 
     // Group apps by workspace, using HashSet to deduplicate app names
     let mut workspace_apps: HashMap<String, HashSet<String>> = HashMap::new();

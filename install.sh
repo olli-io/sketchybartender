@@ -77,20 +77,19 @@ if ! cargo build --release; then
 fi
 
 # Copy the binaries
-cp "${SCRIPT_DIR}/sketchybartender/target/release/${BARTENDER_BINARY}" "${INSTALL_DIR}/${BARTENDER_BINARY}"
-cp "${SCRIPT_DIR}/sketchybartender/target/release/${CLI_BINARY}" "${INSTALL_DIR}/${CLI_BINARY}"
+cp -f "${SCRIPT_DIR}/sketchybartender/target/release/${BARTENDER_BINARY}" "${INSTALL_DIR}/${BARTENDER_BINARY}"
+cp -f "${SCRIPT_DIR}/sketchybartender/target/release/${CLI_BINARY}" "${INSTALL_DIR}/${CLI_BINARY}"
 chmod +x "${INSTALL_DIR}/${BARTENDER_BINARY}"
 chmod +x "${INSTALL_DIR}/${CLI_BINARY}"
 
 # Copy the configuration file
 if [[ -f "${SCRIPT_DIR}/sketchybartenderrc" ]]; then
-    cp "${SCRIPT_DIR}/sketchybartenderrc" "${CONFIG_DIR}/sketchybartenderrc"
+    cp -f "${SCRIPT_DIR}/sketchybartenderrc" "${CONFIG_DIR}/sketchybartenderrc"
     echo "✓ Configuration installed to ${CONFIG_DIR}/sketchybartenderrc"
 fi
 
 echo "✓ sketchybartender installed to ${INSTALL_DIR}/${BARTENDER_BINARY}"
 echo "✓ sketchycli installed to ${INSTALL_DIR}/${CLI_BINARY}"
-echo "Reloading sketchybar..."
 
 cd "${SCRIPT_DIR}"
 
@@ -98,18 +97,15 @@ cd "${SCRIPT_DIR}"
 if [[ -f "${SCRIPT_DIR}/sketchybarrc" ]]; then
     # Backup existing sketchybarrc if it exists
     if [[ -f "${CONFIG_DIR}/sketchybarrc" ]]; then
-        cp "${CONFIG_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc.bak"
+        cp -f "${CONFIG_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc.bak"
         echo "✓ Backed up existing sketchybarrc to ${CONFIG_DIR}/sketchybarrc.bak"
     fi
-    cp "${SCRIPT_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc"
-    echo "✓ sketchybarrc moved to ${CONFIG_DIR}/sketchybarrc"
+    cp -f "${SCRIPT_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc"
+    echo "✓ sketchybarrc copied to ${CONFIG_DIR}/sketchybarrc"
 fi
 
-# At the end, optionally:
-if [[ "${CLEAN_BUILD:-}" == "1" ]]; then
-    rm -rf "${SCRIPT_DIR}/sketchybartender/target"
-    echo "✓ Cleaned build artifacts"
-fi
+echo "✓ Reloading sketchybar..."
+sketchybar --reload
 
 echo ""
 echo "==> Installation complete!"
@@ -123,5 +119,3 @@ echo "Configuration:"
 echo "  - ${CONFIG_DIR}/sketchybartenderrc"
 echo "  - ${CONFIG_DIR}/sketchybarrc"
 echo ""
-echo "Note: Make sure ${INSTALL_DIR} is in your PATH."
-echo "Note: These daemons should have already been started by sketchybar itself."
