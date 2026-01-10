@@ -15,13 +15,6 @@ if ! command -v sketchybar &> /dev/null; then
     exit 1
 fi
 
-# Check if Swift compiler is available
-if ! command -v swiftc &> /dev/null; then
-    echo "Error: Swift compiler not found. Please install Xcode Command Line Tools:"
-    echo "  xcode-select --install"
-    exit 1
-fi
-
 # Check if Rust/Cargo is available
 if ! command -v cargo &> /dev/null; then
     echo "Error: Cargo not found. Please install Rust:"
@@ -32,7 +25,6 @@ fi
 # Determine installation directory
 INSTALL_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.config/sketchybar"
-BOUNCER_BINARY="sketchybarbouncer"
 BARTENDER_BINARY="sketchybartender"
 CLI_BINARY="sketchycli"
 
@@ -42,24 +34,6 @@ mkdir -p "${CONFIG_DIR}"
 
 # Get the directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-echo "==> Building sketchybarbouncer..."
-
-# Check if main.swift exists
-if [[ ! -f "${SCRIPT_DIR}/sketchybarbouncer/src/main.swift" ]]; then
-    echo "Error: main.swift not found in ${SCRIPT_DIR}/sketchybarbouncer/src"
-    exit 1
-fi
-
-# Compile the Swift source
-if ! swiftc -O "${SCRIPT_DIR}/sketchybarbouncer/src/main.swift" -o "${INSTALL_DIR}/${BOUNCER_BINARY}"; then
-    echo "Error: Bouncer compilation failed"
-    exit 1
-fi
-
-# Make the binary executable
-chmod +x "${INSTALL_DIR}/${BOUNCER_BINARY}"
-echo "✓ sketchybarbouncer installed to ${INSTALL_DIR}/${BOUNCER_BINARY}"
 
 echo "==> Building sketchybartender..."
 
@@ -111,7 +85,6 @@ echo ""
 echo "==> Installation complete!"
 echo ""
 echo "Installed binaries:"
-echo "  - ${INSTALL_DIR}/${BOUNCER_BINARY}"
 echo "  - ${INSTALL_DIR}/${BARTENDER_BINARY}"
 echo "  - ${INSTALL_DIR}/${CLI_BINARY}"
 echo ""

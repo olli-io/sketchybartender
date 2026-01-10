@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Cache entry for monitor mappings
+/// Cache entry for display mappings only (workspaces are queried fresh each time)
 #[derive(Debug, Clone)]
 struct CacheEntry {
     /// Map of Sketchybar display ID -> Aerospace monitor ID
@@ -58,9 +58,11 @@ impl MonitorMapper {
 
         mappings
     }
-    /// Build the monitor mappings from scratch
+
+
+    /// Build the monitor mappings from scratch (display mappings only)
     fn build_mappings(&self) -> HashMap<u32, u32> {
-        let mut result = HashMap::new();
+        let mut mappings = HashMap::new();
 
         // Get NSScreen data (NSScreen ID -> NSScreen Name)
         let nsscreen_map = self.get_nsscreen_map();
@@ -78,14 +80,14 @@ impl MonitorMapper {
                 // Find Aerospace ID for this NSScreen name
                 for (aero_id, aero_name) in &aerospace_map {
                     if aero_name == nsscreen_name {
-                        result.insert(sb_id, *aero_id);
+                        mappings.insert(sb_id, *aero_id);
                         break;
                     }
                 }
             }
         }
 
-        result
+        mappings
     }
 
     /// Get NSScreen ID -> NSScreen Name mapping

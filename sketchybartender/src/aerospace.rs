@@ -74,12 +74,12 @@ pub fn get_all_windows() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Get the monitor ID for each workspace (1-9)
+/// Get the monitor ID for each workspace
 pub fn get_workspace_monitors() -> HashMap<String, u32> {
     let mut result = HashMap::new();
 
     let output = match Command::new("aerospace")
-        .args(["list-workspaces", "--monitor", "all", "--format", "%{monitor-id}|%{workspace}"])
+        .args(["list-workspaces", "--all", "--format", "%{workspace}|%{monitor-id}"])
         .output()
     {
         Ok(o) => o,
@@ -93,8 +93,8 @@ pub fn get_workspace_monitors() -> HashMap<String, u32> {
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         let parts: Vec<&str> = line.splitn(2, '|').collect();
         if parts.len() == 2 {
-            if let Ok(monitor_id) = parts[0].parse::<u32>() {
-                result.insert(parts[1].to_string(), monitor_id);
+            if let Ok(monitor_id) = parts[1].parse::<u32>() {
+                result.insert(parts[0].to_string(), monitor_id);
             }
         }
     }
@@ -102,49 +102,91 @@ pub fn get_workspace_monitors() -> HashMap<String, u32> {
     result
 }
 
-/// Get workspace information for all workspaces 1-9
-pub fn get_workspace_infos() -> HashMap<String, WorkspaceInfo> {
+/// Get workspace information for all workspaces
+///
+/// # Arguments
+/// * `show_all_windows` - If true, show an icon for each window. If false, show one icon per app.
+pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceInfo> {
     // Query all aerospace state at once to get consistent snapshot
-    // Retry once if focused workspace is empty (might indicate aerospace is still updating)
+    // Retry if focused workspace is empty or if window list seems stale
     let mut focused = get_focused_workspace().unwrap_or_default();
     let mut windows = get_all_windows();
     let mut monitors = get_workspace_monitors();
-    
-    // If focused workspace is empty, retry once after a short delay
-    if focused.is_empty() {
-        eprintln!("[AEROSPACE] Warning: focused workspace empty, retrying...");
-        std::thread::sleep(std::time::Duration::from_millis(20));
+    let initial_window_count = windows.len();
+
+    // Retry mechanism to handle aerospace state updates
+    // Sometimes aerospace hasn't finished updating when we query, especially after move-node-to-workspace
+    let mut retry_count = 0;
+    let max_retries = 2;
+
+    while retry_count < max_retries {
+        let needs_retry = if focused.is_empty() {
+            // Focused workspace is empty - definitely need to retry
+            eprintln!("[AEROSPACE] Warning: focused workspace empty (retry {}/{})", retry_count + 1, max_retries);
+            true
+        } else if retry_count == 0 && initial_window_count > 0 && windows.is_empty() {
+            // We had windows before but now have none - might be mid-update
+            eprintln!("[AEROSPACE] Warning: all windows disappeared, possible stale data (retry {}/{})", retry_count + 1, max_retries);
+            true
+        } else {
+            false
+        };
+
+        if !needs_retry {
+            break;
+        }
+
+        // Exponential backoff: 20ms, then 40ms
+        let delay_ms = 20 * (retry_count + 1) as u64;
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+
         focused = get_focused_workspace().unwrap_or_default();
         windows = get_all_windows();
         monitors = get_workspace_monitors();
+        retry_count += 1;
     }
 
-    // Group apps by workspace, using HashSet to deduplicate app names
-    let mut workspace_apps: HashMap<String, HashSet<String>> = HashMap::new();
+    // Group apps by workspace, keeping all windows (including multiple windows of the same app)
+    let mut workspace_apps: HashMap<String, Vec<String>> = HashMap::new();
 
     for (ws, app) in windows {
         workspace_apps
             .entry(ws)
             .or_default()
-            .insert(app);
+            .push(app);
     }
 
-    // Build workspace infos for workspaces 1-9
+    // Build workspace infos for all workspaces found
     let mut result = HashMap::new();
-    for i in 1..=9 {
-        let id = i.to_string();
-        // Convert HashSet to Vec and sort alphabetically
-        let mut apps: Vec<String> = workspace_apps
+
+    // Get all workspace IDs from the monitors map and workspace_apps
+    let mut all_workspace_ids: HashSet<String> = monitors.keys().cloned().collect();
+    all_workspace_ids.extend(workspace_apps.keys().cloned());
+
+    for id in all_workspace_ids {
+        // Get all apps for this workspace (including duplicates for multiple windows)
+        let apps: Vec<String> = workspace_apps
             .get(&id)
-            .map(|set| set.iter().cloned().collect())
+            .cloned()
             .unwrap_or_default();
-        apps.sort();
 
         // Build icons string
-        let icons: String = apps
-            .iter()
-            .map(|app| format!("{} ", get_icon(app)))
-            .collect();
+        let icons: String = if show_all_windows {
+            // Show an icon for each window
+            apps
+                .iter()
+                .map(|app| format!("{}", get_icon(app)))
+                .collect()
+        } else {
+            // Show one icon per unique app
+            let mut unique_apps: Vec<String> = apps.clone();
+            unique_apps.sort();
+            unique_apps.dedup();
+            unique_apps
+                .iter()
+                .map(|app| format!("{}", get_icon(app)))
+                .collect()
+        };
 
         result.insert(
             id.clone(),

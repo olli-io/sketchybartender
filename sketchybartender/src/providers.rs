@@ -10,21 +10,34 @@ pub struct BatteryInfo {
 impl BatteryInfo {
     /// Get the appropriate icon for the battery state
     pub fn icon(&self) -> &'static str {
-        if self.is_charging {
-            return "\u{f0e7}"; 
-        }
         match self.percentage {
             90..=100 => "\u{f240}",
             70..=89 => "\u{f241}",
             40..=69 => "\u{f242}",
-            10..=39 => "\u{f243}", 
-            _ => "\u{f244}",        
+            10..=39 => "\u{f243}",
+            _ => "\u{f244}",
         }
+    }
+
+    /// Get the icon color based on charging state
+    pub fn icon_color(&self) -> &'static str {
+        if self.is_charging {
+            "0xfffabd2f" // Yellow when charging
+        } else if self.percentage <= 10 {
+            "0xfffb4934" // Red when battery is critically low
+        } else {
+            "0xffffffff" // White when not charging
+        }
+    }
+
+    pub fn label_color(&self) -> &'static str {
+        self.icon_color()
     }
 }
 
 /// Get current battery information
-pub fn get_battery() -> Option<BatteryInfo> {
+/// If power_source is provided (from sketchybar event), use it directly instead of querying pmset
+pub fn get_battery(power_source: Option<String>) -> Option<BatteryInfo> {
     let output = Command::new("pmset")
         .args(["-g", "batt"])
         .output()
@@ -41,8 +54,12 @@ pub fn get_battery() -> Option<BatteryInfo> {
             s.split('%').next()?.parse::<u8>().ok()
         })?;
 
-    // Check if charging
-    let is_charging = stdout.contains("AC Power");
+    // Check if charging - use provided power_source if available, otherwise parse from pmset output
+    let is_charging = if let Some(source) = power_source {
+        source == "AC"
+    } else {
+        stdout.contains("AC Power")
+    };
 
     Some(BatteryInfo { percentage, is_charging })
 }
@@ -269,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_battery_icons() {
-        let high = BatteryInfo { percentage: 95, charging: false };
+        let high = BatteryInfo { percentage: 95, is_charging: false };
         assert_eq!(high.icon(), "󱊣");
 
         let is_charging = BatteryInfo { percentage: 50, is_charging: true };

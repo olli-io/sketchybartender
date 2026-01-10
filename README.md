@@ -1,18 +1,13 @@
 # sketchybar-employees
 
-Helper daemons and cli script to run my sketchybar setup (WIP).
+Helper daemon and cli script to run my sketchybar setup (WIP).
 
 1. Sketchybartender (rust) handles updating all information in sketchybar.
-2. Sketchybarbouncer (swift) listens to NSWorkspace notifications to update sketchybar workspaces when an application closes or opens and relays them to sektchybartender.
-3. Sketchybarcli (rust) passes on cli commands to sketchybartender, when triggered by aerospace (window manager) or sketchybar.
+2. Sketchycli (rust) passes on cli commands to sketchybartender, when triggered by aerospace (window manager) or sketchybar.
 
 ## Installation
 
 ### Deps:
-
-```bash
-xcode-select --install
-```
 
 ```bash
 brew install rust
@@ -26,7 +21,7 @@ brew install FelixKratz/formulae/sketchybar
 brew install --cask nikitabobko/tap/aerospace
 ```
 
-### 2. Install sketchy bar employees
+### 2. Install sketchybar employees
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/olli-io/sketchybar-employees/HEAD/install.sh)"
@@ -34,7 +29,6 @@ brew install --cask nikitabobko/tap/aerospace
 
 This will:
 
-- Build and install `sketchybarbouncer` (Swift daemon)
 - Build and install `sketchybartender` (Rust daemon)
 - Build and install `sketchycli` (CLI tool)
 - Copy configuration files to `~/.config/sketchybar/`
@@ -65,7 +59,6 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Binaries:
 
-- `~/.local/bin/sketchybarbouncer`
 - `~/.local/bin/sketchybartender`
 - `~/.local/bin/sketchycli`
 
@@ -77,3 +70,18 @@ Configuration:
 ## Usage
 
 The daemons are automatically started by sketchybar. You can configure update intervals in `~/.config/sketchybar/sketchybartenderrc`.
+
+## Uninstall
+
+To fire sketchybar-employees:
+
+```bash
+
+# Remove the binaries
+rm -f ~/.local/bin/sketchybartender
+rm -f ~/.local/bin/sketchycli
+
+# Remove configuration files (optional - keeps your config)
+rm -f ~/.config/sketchybar/sketchybartenderrc
+# rm -f ~/.config/sketchybar/sketchybarrc  # Uncomment if you want to remove sketchybarrc too
+```

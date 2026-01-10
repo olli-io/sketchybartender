@@ -4,28 +4,26 @@
 ##### Start Helper Daemon #####
 # Kill any existing helper and start fresh
 pkill -f sketchybartender 2>/dev/null
-pkill -f sketchybarbouncer 2>/dev/null
 sleep 0.2
 
-# Start the daemons with full paths and proper backgrounding
+# Start the daemon with full path and proper backgrounding
 nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
-nohup "${HOME}/.local/bin/sketchybarbouncer" >/dev/null 2>&1 &
 
 ##### Bar Appearance #####
-sketchybar --bar position=top height=36 blur_radius=0 color=0x40000000 margin=0
+sketchybar --bar position=top height=25 blur_radius=0 color=0xff000000 margin=0
 
 ##### Changing Defaults #####
 default=(
   padding_left=0
-  padding_right=5
-  icon.font="Hack Nerd Font:Bold:15.0"
-  label.font="Hack Nerd Font:Bold:13.0"
+  padding_right=0
+  icon.font="JetbrainsMono Nerd Font:Bold:15.0"
+  label.font="JetbrainsMono Nerd Font:Bold:14.0"
   icon.color=0xffffffff
   label.color=0xffffffff
-  icon.padding_left=3
+  icon.padding_left=5
   icon.padding_right=3
   label.padding_left=3
-  label.padding_right=3
+  label.padding_right=8
 )
 sketchybar --default "${default[@]}"
 
@@ -33,49 +31,58 @@ sketchybar --default "${default[@]}"
 # Workspace updates are now handled directly by aerospace → sketchybartender
 # No need for sketchybar event subscriptions
 
-# Add workspace items for workspaces 1-9 (no subscriptions, updated by workspace_manager)
-for workspace in {1..9}; do
+# Add workspace items for lettered workspaces (no subscriptions, updated by workspace_manager)
+for workspace in {1..9} {a..z} ; do
     sketchybar --add item "workspace.$workspace" left \
         --set "workspace.$workspace" \
         icon.font="sketchybar-app-font:Regular:13.0" \
-        label.font="Hack Nerd Font:Bold:14.0" \
-        background.corner_radius=10 \
-        background.height=28 \
+        label.font="JetbrainsMono Nerd Font:Bold:14.0" \
+        background.corner_radius=6 \
+        background.height=22 \
         background.drawing=off \
-        padding_left=4 \
-        padding_right=2 \
-        icon.padding_left=8 \
-        icon.padding_right=4 \
-        label.padding_left=4 \
-        label.padding_right=10 \
+        icon.padding_left=5 \
+        icon.padding_right=0 \
+        label.padding_left=2 \
+        label.padding_right=8 \
+        label.y_offset=0.5 \
+        padding_right=3 \
         drawing=off \
-        click_script="$CLI_BIN on-workspace-clicked"
+        click_script="aerospace workspace $workspace"
 done
+          
+##### Adding Event Listeners #####
+# Listener for workspace window changes
+sketchybar --add event space_windows_change \
+           --add item workspace_listener left \
+           --set workspace_listener \
+           drawing=off \
+           script="$HOME/.local/bin/sketchycli on-workspace-changed" \
+           --subscribe workspace_listener space_windows_change
 
 ##### Adding Left Items #####
 sketchybar --add item front_app left \
            --set front_app \
-           icon.font="sketchybar-app-font:Regular:16.0" \
-           label.font="Hack Nerd Font:Bold:14.0" \
+           label.font="Hack Nerd Font:Bold:13.0" \
            icon.drawing=off \
-           padding_left=10
+           padding_left=0
 
 ##### Adding Right Items #####
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
 sketchybar --add item clock right \
            --set clock padding_left=0 padding_right=0 \
-           --add item volume right \
-           --set volume script="$HOME/.local/bin/sketchycli on-volume-changed" \
-           --subscribe volume volume_change \
-           --add item battery right \
-           --add item brew right \
-           --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked" \
-           --subscribe brew mouse.clicked \
-           --add item teams right \
+           --subscribe volume volume_change
+
+sketchybar --add item battery right \
+           --subscribe battery power_source_change \
+           --set battery script="$HOME/.local/bin/sketchycli on-power-source-changed "'$INFO'
+
+sketchybar --add item brew right \
+           --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked"
+
+sketchybar --add item teams right \
            --set teams icon="󰊻" icon.color=0xffffffff icon.font="Hack Nerd Font:Regular:18.0" \
-           click_script="sketchycli on-teams-clicked" \
-           --subscribe teams mouse.clicked
+           click_script="$HOME/.local/bin/sketchycli on-teams-clicked"
 
 ##### Force all scripts to run the first time #####
 sketchybar --update
