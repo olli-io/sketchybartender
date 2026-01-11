@@ -3,6 +3,7 @@ mod config;
 mod daemon;
 mod handlers;
 mod icon_map;
+mod mach_client;
 mod providers;
 
 use std::sync::{Arc, Mutex};

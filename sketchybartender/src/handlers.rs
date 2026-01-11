@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crate::aerospace;
 use crate::config::Config;
 use crate::icon_map;
+use crate::mach_client;
 use crate::providers;
 
 /// A builder for batching sketchybar commands
@@ -25,7 +26,13 @@ impl SketchybarBatch {
         self.args.push("--set".to_string());
         self.args.push(item.to_string());
         for (key, value) in props {
-            self.args.push(format!("{}={}", key, value));
+            // Quote the value if it contains spaces or special characters
+            let formatted_value = if value.contains(' ') || value.is_empty() {
+                format!("{}=\"{}\"", key, value)
+            } else {
+                format!("{}={}", key, value)
+            };
+            self.args.push(formatted_value);
         }
         self
     }
@@ -44,17 +51,22 @@ impl SketchybarBatch {
             return Ok(());
         }
 
-        let status = Command::new("sketchybar")
-            .args(&self.args)
-            .status()?;
+        // Convert args to a single command string for mach port
+        let command = self.args.join(" ");
 
-        if status.success() {
-            Ok(())
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "sketchybar command failed",
-            ))
+        // Debug: print the command being sent
+        eprintln!("[DEBUG] Sending to sketchybar: {}", command);
+
+        // Send via mach port
+        match mach_client::sketchybar(&command) {
+            Ok(_) => {
+                eprintln!("[DEBUG] Command sent successfully");
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("[DEBUG] Command failed: {}", e);
+                Err(std::io::Error::new(std::io::ErrorKind::Other, format!("sketchybar mach command failed: {}", e)))
+            }
         }
     }
 }
@@ -264,6 +276,15 @@ pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>
     }
 }
 
+/// Helper to build workspace label with bracket formatting
+fn format_workspace_label(ws_id: &str, has_icon: bool) -> String {
+    if has_icon {
+        format!("[{}]", ws_id)
+    } else {
+        format!("\u{f444} [{}]", ws_id)
+    }
+}
+
 pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     // Debounce: Check if enough time has passed since the last workspace change
     let now = Instant::now();
@@ -288,7 +309,6 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     }
 
     // Small delay to let aerospace settle its internal state
-    // This helps avoid race conditions when aerospace is still updating
     thread::sleep(Duration::from_millis(10));
 
     // Get all unique display IDs to determine if we're on single or multi-monitor setup
@@ -299,7 +319,6 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     let is_single_monitor = all_displays.len() == 1;
 
     // Show all windows on multiple monitors, one icon per app on single monitor
-    // This queries aerospace fresh each time - no caching of workspace state
     let infos = aerospace::get_workspace_infos(!is_single_monitor);
 
     // Get the set of current workspaces
@@ -315,7 +334,7 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         return;
     };
 
-    // Find workspaces that need to be cleared (were rendered before but not in current list)
+    // Find workspaces that need to be cleared
     let workspaces_to_clear: HashSet<String> = previous_workspaces
         .difference(&current_workspaces)
         .cloned()
@@ -327,92 +346,60 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     // Clear workspaces that are no longer in aerospace's list
     for ws_id in workspaces_to_clear {
         let item_name = format!("workspace.{}", ws_id);
-
-        // Clear on all displays
         for display_id in &all_displays {
             let batch = batches.entry(*display_id).or_insert_with(SketchybarBatch::new);
             batch.set(&item_name, &[
                 ("drawing", "off"),
-                ("background.drawing", "off"),
-                ("icon.drawing", "off"),
-                ("icon", ""),
                 ("display", &display_id.to_string()),
             ]);
         }
     }
 
     // Process each workspace from the fresh aerospace data
-    // We only use infos.keys() which represents the current live state from aerospace
     for (ws_id, info) in &infos {
         let has_apps = !info.apps.is_empty();
         let is_focused = info.is_focused;
-        let icons = info.icons.as_str();
         let display_id = info.display_id;
-
         let item_name = format!("workspace.{}", ws_id);
-
-        // The display_id from aerospace directly corresponds to Sketchybar's display ID
+        let display_str = display_id.to_string();
         let batch = batches.entry(display_id).or_insert_with(SketchybarBatch::new);
 
-        if has_apps && is_focused {
-            batch.set(&item_name, &[
-                ("label", &format!("[{}]", ws_id)),
-                ("label.color", &config.workspace_focused_label_color),
-                ("icon", icons),
-                ("icon.color", &config.workspace_focused_icon_color),
-                ("icon.drawing", "on"),
-                ("drawing", "on"),
-                ("background.drawing", "on"),
-                ("background.color", &config.workspace_bg_color),
-                ("display", &display_id.to_string()),
-            ]);
-        } else if has_apps {
-            batch.set(&item_name, &[
-                ("label", &format!("[{}]", ws_id)),
-                ("label.color", &config.workspace_unfocused_label_color),
-                ("icon.color", &config.workspace_unfocused_icon_color),
-                ("icon", icons),
-                ("icon.drawing", "on"),
-                ("drawing", "on"),
-                ("background.drawing", "off"),
-                ("display", &display_id.to_string()),
-            ]);
-        } else if is_focused {
-            batch.set(&item_name, &[
-                ("label", &format!("\u{f444} [{}]", ws_id)),
-                ("label.color", &config.workspace_focused_label_color),
-                ("icon.color", &config.workspace_focused_icon_color),
-                ("icon", ""),
-                ("drawing", "on"),
-                ("icon.drawing", "off"),
-                ("background.drawing", "on"),
-                ("background.color", &config.workspace_bg_color),
-                ("display", &display_id.to_string()),
-            ]);
+        // Determine colors and states
+        let label_color = if is_focused {
+            &config.workspace_focused_label_color
         } else {
-            // Empty and not focused
-            if is_single_monitor {
-                // Hide completely when single monitor
-                batch.set(&item_name, &[
-                    ("drawing", "off"),
-                    ("background.drawing", "off"),
-                    ("icon.drawing", "off"),
-                    ("display", &display_id.to_string()),
-                ]);
-            } else {
-                // Show when multiple monitors
-                batch.set(&item_name, &[
-                    ("label", &format!("\u{f444} [{}]", ws_id)),
-                    ("label.color", &config.workspace_unfocused_label_color),
-                    ("icon.color", &config.workspace_unfocused_icon_color),
-                    ("icon", ""),
-                    ("drawing", "on"),
-                    ("icon.drawing", "off"),
-                    ("background.drawing", "off"),
-                    ("display", &display_id.to_string()),
-                ]);
-            }
+            &config.workspace_unfocused_label_color
+        };
+        let icon_color = if is_focused {
+            &config.workspace_focused_icon_color
+        } else {
+            &config.workspace_unfocused_icon_color
+        };
+        let icon_value = if has_apps { &info.icons } else { "" };
+        let icon_drawing = if has_apps { "on" } else { "off" };
+        let background_drawing = if is_focused { "on" } else { "off" };
+
+        let mut settings = vec![
+            ("label", format_workspace_label(ws_id, has_apps)),
+            ("label.color", label_color.to_string()),
+            ("icon", icon_value.to_string()),
+            ("icon.color", icon_color.to_string()),
+            ("icon.drawing", icon_drawing.to_string()),
+            ("drawing", "on".to_string()),
+            ("background.drawing", background_drawing.to_string()),
+            ("display", display_str.clone()),
+        ];
+
+        if is_focused {
+            settings.push(("background.color", config.workspace_bg_color.to_string()));
         }
+
+        let settings_refs: Vec<(&str, &str)> = settings
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+
+        batch.set(&item_name, &settings_refs);
     }
 
     // Execute all batches

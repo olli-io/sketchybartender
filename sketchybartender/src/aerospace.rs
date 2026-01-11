@@ -71,6 +71,40 @@ pub fn get_focused_app() -> Option<String> {
     None
 }
 
+/// Information about the focused workspace from aerospace
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct FocusedWorkspaceInfo {
+    pub workspace: String,
+    pub workspace_is_focused: bool,
+    pub workspace_is_visible: bool,
+    #[serde(rename = "monitor-appkit-nsscreen-screens-id")]
+    pub display_id: u32,
+}
+
+/// Get the currently focused workspace
+/// This is used as a fallback when no windows are open in the focused workspace
+pub fn get_focused_workspace() -> Option<FocusedWorkspaceInfo> {
+    let output = Command::new("aerospace")
+        .args([
+            "list-workspaces",
+            "--focused",
+            "--format",
+            "%{workspace}%{workspace-is-focused}%{workspace-is-visible}%{monitor-appkit-nsscreen-screens-id}",
+            "--json"
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    // Parse JSON - returns an array with a single element
+    let workspaces: Vec<FocusedWorkspaceInfo> = serde_json::from_slice(&output.stdout).ok()?;
+    workspaces.into_iter().next()
+}
+
 /// Get workspace information for all workspaces
 ///
 /// # Arguments
@@ -129,6 +163,19 @@ pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceI
                 window.workspace_is_focused,
                 window.display_id,
             ));
+    }
+
+    // If no workspace is marked as focused, query aerospace for the focused workspace
+    // This handles the case where the focused workspace has no windows
+    let has_focused = workspace_data.values().any(|(_, is_focused, _)| *is_focused);
+    if !has_focused {
+        if let Some(focused) = get_focused_workspace() {
+            eprintln!("[AEROSPACE] No focused workspace in windows, adding empty focused workspace: {}", focused.workspace);
+            workspace_data.insert(
+                focused.workspace.clone(),
+                (Vec::new(), true, focused.display_id),
+            );
+        }
     }
 
     // Build workspace infos

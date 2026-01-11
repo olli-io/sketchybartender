@@ -8,13 +8,6 @@ if [[ "$(uname)" != "Darwin" ]]; then
     exit 1
 fi
 
-# Check if sketchybar is installed
-if ! command -v sketchybar &> /dev/null; then
-    echo "Error: sketchybar not found. Please install sketchybar first:"
-    echo "  brew install FelixKratz/formulae/sketchybar"
-    exit 1
-fi
-
 # Check if Rust/Cargo is available
 if ! command -v cargo &> /dev/null; then
     echo "Error: Cargo not found. Please install Rust:"
