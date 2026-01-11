@@ -37,7 +37,7 @@ impl Default for Config {
             battery_interval: 120,
             brew_interval: 3600,
             teams_interval: 30,
-            workspace_bg_color: "0xfbb60cd".to_string(),
+            workspace_bg_color: "0xffbb60cd".to_string(),
             workspace_focused_label_color: "0xff1d2021".to_string(),
             workspace_focused_icon_color: "0xff1d2021".to_string(),
             workspace_unfocused_label_color: "0xffffffff".to_string(),
