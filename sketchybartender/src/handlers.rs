@@ -310,7 +310,31 @@ pub fn handle_volume_refresh(vol: Option<u8>) {
 }
 
 pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
-    let mut app_name = app.unwrap_or_else(|| "unknown".to_string());
+    // Get app name from parameter or query aerospace
+    let mut app_name = match app {
+        Some(name) => name,
+        None => {
+            // Fallback: query aerospace for the focused window
+            Command::new("aerospace")
+                .args(["list-windows", "--focused", "--format", "%{app-name}"])
+                .output()
+                .ok()
+                .and_then(|output| {
+                    if output.status.success() {
+                        String::from_utf8(output.stdout).ok()
+                    } else {
+                        None
+                    }
+                })
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default()
+        }
+    };
+    
+    // If app_name is empty, don't update (no focused window)
+    if app_name.is_empty() {
+        return;
+    }
     
     // Remove "Microsoft " prefix from app names
     if app_name.starts_with("Microsoft ") {
