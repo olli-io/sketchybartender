@@ -52,6 +52,14 @@ fn main() {
         }
     });
 
+    let system_interval = config.system_interval;
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(system_interval));
+            handlers::handle_system_refresh();
+        }
+    });
+
     // Start the daemon socket listener
     daemon::start_daemon(state);
 }

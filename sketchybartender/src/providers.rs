@@ -1,4 +1,5 @@
 use std::process::Command;
+use sysinfo::System;
 
 /// Battery information
 #[derive(Debug, Clone)]
@@ -177,26 +178,64 @@ pub fn get_brew_outdated() -> BrewInfo {
 pub struct SystemInfo {
     pub cpu_percentage: u8,
     pub ram_percentage: u8,
+    pub ram_used_gb: f32,
+    pub ram_total_gb: f32,
 }
 
 impl SystemInfo {
-    /// Get the appropriate CPU icon based on usage
+    /// Get the CPU icon
     pub fn cpu_icon(&self) -> &'static str {
-        match self.cpu_percentage {
-            80..=100 => "󰻠", // nf-md-cpu_high
-            50..=79 => "󰻟",  // nf-md-cpu_medium
-            _ => "󰘚",       // nf-md-cpu_low
+        "\u{f0ee0}" // nf-md-cpu_64_bit
+    }
+
+    /// Get the RAM icon
+    pub fn ram_icon(&self) -> &'static str {
+        "\u{f035b}" // nf-md-memory
+    }
+}
+
+/// Get current CPU and RAM usage
+pub fn get_system_info() -> SystemInfo {
+    let mut info = SystemInfo::default();
+
+    // Get CPU usage using top command
+    if let Ok(output) = Command::new("top")
+        .args(["-l", "1", "-n", "0"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Parse CPU usage line: "CPU usage: 5.71% user, 3.57% sys, 90.71% idle"
+            for line in stdout.lines() {
+                if line.starts_with("CPU usage:") {
+                    // Extract idle percentage and calculate usage
+                    if let Some(idle_part) = line.split(',').nth(2) {
+                        if let Some(idle_str) = idle_part.split('%').next() {
+                            if let Ok(idle) = idle_str.trim().parse::<f32>() {
+                                info.cpu_percentage = (100.0 - idle).round() as u8;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
         }
     }
 
-    /// Get the appropriate RAM icon based on usage
-    pub fn ram_icon(&self) -> &'static str {
-        match self.ram_percentage {
-            80..=100 => "󰍛", // nf-md-memory_high
-            50..=79 => "󰍛",  // nf-md-memory_medium
-            _ => "󰍛",       // nf-md-memory_low
-        }
+    // Get RAM usage using sysinfo crate (much more efficient and accurate)
+    let mut sys = System::new();
+    sys.refresh_memory();
+    
+    let total_memory = sys.total_memory();
+    let used_memory = sys.used_memory();
+    
+    if total_memory > 0 {
+        info.ram_percentage = ((used_memory as f64 / total_memory as f64) * 100.0).round() as u8;
+        info.ram_used_gb = (used_memory as f64 / 1_073_741_824.0) as f32;
+        info.ram_total_gb = (total_memory as f64 / 1_073_741_824.0) as f32;
     }
+
+    info
 }
 
 /// Microsoft Teams notification information

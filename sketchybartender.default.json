@@ -3,6 +3,7 @@
   "battery_interval": 120,
   "brew_interval": 3600,
   "teams_interval": 30,
+  "system_interval": 5,
   "workspace_bg_color": "0xffbb60cd",
   "workspace_focused_label_color": "0xff1d2021",
   "workspace_focused_icon_color": "0xff1d2021",

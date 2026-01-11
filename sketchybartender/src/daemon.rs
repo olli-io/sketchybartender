@@ -9,9 +9,11 @@ use std::thread;
 use crate::handlers::{
     DaemonState,
     handle_battery_refresh,
+    handle_brew_refresh,
     handle_brew_upgrade,
     handle_config_reload,
     handle_focus_refresh,
+    handle_system_refresh,
     handle_teams_refresh,
     handle_volume_refresh,
     handle_workspace_refresh,
@@ -93,6 +95,8 @@ pub fn start_daemon(state: Arc<Mutex<DaemonState>>) {
     handle_workspace_refresh(&state);
     handle_battery_refresh(None);
     crate::handlers::handle_clock_refresh();
+    handle_brew_refresh();
+    handle_system_refresh();
     handle_teams_refresh();
 
     // Accept connections

@@ -197,6 +197,15 @@ pub fn handle_teams_refresh() {
     }
 }
 
+pub fn handle_system_refresh() {
+    let info = providers::get_system_info();
+    if let Err(e) = set_item("sysinfo", &[
+        ("label", &format!("{:.1}/{:.0}GB", info.ram_used_gb, info.ram_total_gb)),
+    ]) {
+        eprintln!("Failed to update sysinfo: {}", e);
+    }
+}
+
 pub fn handle_brew_upgrade() {
     // Set the refresh icon
     if let Err(e) = set_item("brew", &[

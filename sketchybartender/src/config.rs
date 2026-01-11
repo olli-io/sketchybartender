@@ -16,6 +16,8 @@ pub struct Config {
     pub brew_interval: u64,
     /// Teams notification check interval (default: 30 seconds)
     pub teams_interval: u64,
+    /// System (CPU/RAM) update interval (default: 5 seconds)
+    pub system_interval: u64,
     /// Workspace background color (default: 0xfff38ba8)
     pub workspace_bg_color: String,
     /// Workspace focused label color (default: 0xff1d2021)
@@ -37,6 +39,7 @@ impl Default for Config {
             battery_interval: 120,
             brew_interval: 3600,
             teams_interval: 30,
+            system_interval: 5,
             workspace_bg_color: "0xffbb60cd".to_string(),
             workspace_focused_label_color: "0xff1d2021".to_string(),
             workspace_focused_icon_color: "0xff1d2021".to_string(),
@@ -123,5 +126,6 @@ mod tests {
         assert_eq!(config.battery_interval, 120);
         assert_eq!(config.brew_interval, 3600);
         assert_eq!(config.teams_interval, 30);
+        assert_eq!(config.system_interval, 5);
     }
 }
