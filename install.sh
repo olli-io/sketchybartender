@@ -10,8 +10,7 @@ fi
 
 # Check if Rust/Cargo is available
 if ! command -v cargo &> /dev/null; then
-    echo "Error: Cargo not found. Please install Rust:"
-    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "Error: Cargo not found. Please install Rust first."
     exit 1
 fi
 
@@ -49,10 +48,8 @@ cp -f "${SCRIPT_DIR}/sketchybartender/target/release/${CLI_BINARY}" "${INSTALL_D
 chmod +x "${INSTALL_DIR}/${BARTENDER_BINARY}"
 chmod +x "${INSTALL_DIR}/${CLI_BINARY}"
 
-# Copy the configuration file
-if [[ -f "${SCRIPT_DIR}/sketchybartender.json" ]]; then
-    cp -f "${SCRIPT_DIR}/sketchybartender.json" "${CONFIG_DIR}/sketchybartender.default.json"
-fi
+# Copy the defaultconfiguration file
+cp -f "${SCRIPT_DIR}/sketchybartender.default.json" "${CONFIG_DIR}/sketchybartender.default.json"
 
 echo "✓ sketchybartender installed to ${INSTALL_DIR}/${BARTENDER_BINARY}"
 echo "✓ sketchycli installed to ${INSTALL_DIR}/${CLI_BINARY}"
@@ -60,13 +57,10 @@ echo "✓ sketchycli installed to ${INSTALL_DIR}/${CLI_BINARY}"
 cd "${SCRIPT_DIR}"
 
 # Copy sketchybarrc to config directory
-if [[ -f "${SCRIPT_DIR}/sketchybarrc" ]]; then
-    # Backup existing sketchybarrc if it exists
     if [[ -f "${CONFIG_DIR}/sketchybarrc" ]]; then
         cp -f "${CONFIG_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc.bak"
     fi
     cp -f "${SCRIPT_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc"
-fi
 
 echo "✓ Reloading sketchybar..."
 sketchybar --reload
@@ -79,6 +73,6 @@ echo "  - ${INSTALL_DIR}/${BARTENDER_BINARY}"
 echo "  - ${INSTALL_DIR}/${CLI_BINARY}"
 echo ""
 echo "Configuration:"
-echo "  - ${CONFIG_DIR}/sketchybartenderrc.json"
+echo "  - ${CONFIG_DIR}/sketchybartenderrc.(default).json"
 echo "  - ${CONFIG_DIR}/sketchybarrc"
 echo ""

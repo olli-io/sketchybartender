@@ -396,7 +396,7 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
 
         let settings_refs: Vec<(&str, &str)> = settings
             .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .map(|(k, v)| (*k, v.as_str()))
             .collect();
 
         batch.set(&item_name, &settings_refs);

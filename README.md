@@ -7,7 +7,7 @@ Helper daemon and cli script to run my sketchybar setup (WIP).
 
 ## Installation
 
-### Deps:
+### 1. Deps
 
 ```bash
 brew install rust
@@ -21,10 +21,12 @@ brew install FelixKratz/formulae/sketchybar
 brew install --cask nikitabobko/tap/aerospace
 ```
 
-### 2. Install sketchybar employees
+### 2. Install sketchybartender
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/olli-io/sketchybar-employees/HEAD/install.sh)"
+git clone https://github.com/olli-io/sketchybar-employees
+cd sketchybar-employees
+./install.sh
 ```
 
 This will:
