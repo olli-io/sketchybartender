@@ -72,7 +72,10 @@ sketchybar --add item front_app left \
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
 sketchybar --add item clock right \
-           --set clock padding_left=0 padding_right=0 \
+           --set clock padding_left=0 padding_right=0
+
+sketchybar --add item volume right \
+           --set volume script="$HOME/.local/bin/sketchycli on-volume-changed \$INFO" \
            --subscribe volume volume_change
 
 sketchybar --add item battery right \
