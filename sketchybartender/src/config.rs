@@ -82,7 +82,7 @@ impl Config {
                 PathBuf::from(home).join(".config")
             });
 
-        config_dir.join("sketchybar").join("sketchybartenderrc.json")
+        config_dir.join("sketchybar").join("sketchybartender.json")
     }
 
     /// Load configuration from a file

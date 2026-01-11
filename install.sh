@@ -50,8 +50,8 @@ chmod +x "${INSTALL_DIR}/${BARTENDER_BINARY}"
 chmod +x "${INSTALL_DIR}/${CLI_BINARY}"
 
 # Copy the configuration file
-if [[ -f "${SCRIPT_DIR}/sketchybartenderrc.json" ]]; then
-    cp -f "${SCRIPT_DIR}/sketchybartenderrc.json" "${CONFIG_DIR}/sketchybartenderrc.json"
+if [[ -f "${SCRIPT_DIR}/sketchybartender.json" ]]; then
+    cp -f "${SCRIPT_DIR}/sketchybartender.json" "${CONFIG_DIR}/sketchybartender.default.json"
 fi
 
 echo "✓ sketchybartender installed to ${INSTALL_DIR}/${BARTENDER_BINARY}"
