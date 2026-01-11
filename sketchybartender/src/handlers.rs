@@ -5,8 +5,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::aerospace;
+use crate::config::Config;
 use crate::icon_map;
-use crate::monitor_map::MonitorMapper;
 use crate::providers;
 
 /// A builder for batching sketchybar commands
@@ -132,21 +132,21 @@ fn update_teams(icon: &str, icon_color: &str, border_color: &str, notification_c
 pub struct DaemonState {
     /// Current front app (for deduplication)
     pub front_app: String,
-    /// Monitor mapper for workspace filtering
-    pub monitor_mapper: MonitorMapper,
     /// Last workspace change timestamp for debouncing
     pub last_workspace_change: Option<Instant>,
     /// Previously rendered workspaces (to detect which ones need clearing)
     pub previous_workspaces: HashSet<String>,
+    /// Configuration
+    pub config: crate::config::Config,
 }
 
-impl Default for DaemonState {
-    fn default() -> Self {
+impl DaemonState {
+    pub fn new(config: crate::config::Config) -> Self {
         Self {
             front_app: String::new(),
-            monitor_mapper: MonitorMapper::new(),
             last_workspace_change: None,
             previous_workspaces: HashSet::new(),
+            config,
         }
     }
 }
@@ -248,22 +248,19 @@ pub fn handle_volume_refresh(vol: Option<u8>) {
 }
 
 pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
-    let app = app.or_else(|| aerospace::get_focused_app());
+    let app_name = app.unwrap_or_else(|| "unknown".to_string());
+    let icon = icon_map::get_icon(&app_name);
 
-    if let Some(app_name) = &app {
-        let icon = icon_map::get_icon(app_name);
-
-        // Update state
-        if let Ok(mut s) = state.lock() {
-            if s.front_app == *app_name {
-                return; // No change
-            }
-            s.front_app = app_name.clone();
+    // Update state
+    if let Ok(mut s) = state.lock() {
+        if s.front_app == app_name {
+            return; // No change
         }
+        s.front_app = app_name.clone();
+    }
 
-        if let Err(e) = update_front_app(icon, app_name) {
-            eprintln!("Failed to update front_app: {}", e);
-        }
+    if let Err(e) = update_front_app(icon, &app_name) {
+        eprintln!("Failed to update front_app: {}", e);
     }
 }
 
@@ -294,15 +291,12 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     // This helps avoid race conditions when aerospace is still updating
     thread::sleep(Duration::from_millis(10));
 
-    let monitor_mappings = if let Ok(s) = state.lock() {
-        // Get display mappings (cached only - monitor ID mapping doesn't change without disconnect)
-        s.monitor_mapper.get_mappings()
-    } else {
-        return;
+    // Get all unique display IDs to determine if we're on single or multi-monitor setup
+    let all_displays: HashSet<u32> = {
+        let temp_infos = aerospace::get_workspace_infos(false);
+        temp_infos.values().map(|info| info.display_id).collect()
     };
-
-    // Check if there's only one monitor (native laptop display)
-    let is_single_monitor = monitor_mappings.len() == 1;
+    let is_single_monitor = all_displays.len() == 1;
 
     // Show all windows on multiple monitors, one icon per app on single monitor
     // This queries aerospace fresh each time - no caching of workspace state
@@ -311,13 +305,14 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     // Get the set of current workspaces
     let current_workspaces: HashSet<String> = infos.keys().cloned().collect();
 
-    // Get previous workspaces and update state
-    let previous_workspaces = if let Ok(mut s) = state.lock() {
+    // Get previous workspaces, config, and update state
+    let (previous_workspaces, config) = if let Ok(mut s) = state.lock() {
         let prev = s.previous_workspaces.clone();
+        let cfg = s.config.clone();
         s.previous_workspaces = current_workspaces.clone();
-        prev
+        (prev, cfg)
     } else {
-        HashSet::new()
+        return;
     };
 
     // Find workspaces that need to be cleared (were rendered before but not in current list)
@@ -334,7 +329,7 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         let item_name = format!("workspace.{}", ws_id);
 
         // Clear on all displays
-        for display_id in monitor_mappings.keys() {
+        for display_id in &all_displays {
             let batch = batches.entry(*display_id).or_insert_with(SketchybarBatch::new);
             batch.set(&item_name, &[
                 ("drawing", "off"),
@@ -352,79 +347,70 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         let has_apps = !info.apps.is_empty();
         let is_focused = info.is_focused;
         let icons = info.icons.as_str();
-        let workspace_monitor = info.monitor_id;
+        let display_id = info.display_id;
 
         let item_name = format!("workspace.{}", ws_id);
 
-        // Use a simple hash-based color assignment for consistent colors
-        let bg_color = "0xfff38ba8"; // blue
+        // The display_id from aerospace directly corresponds to Sketchybar's display ID
+        let batch = batches.entry(display_id).or_insert_with(SketchybarBatch::new);
 
-        // Find the Sketchybar display ID for this workspace's monitor
-        // We need to iterate through monitor_mappings to find the display that maps to this aerospace monitor
-        for (display_id, aerospace_monitor_id) in &monitor_mappings {
-            if *aerospace_monitor_id == workspace_monitor {
-                let batch = batches.entry(*display_id).or_insert_with(SketchybarBatch::new);
-
-                if has_apps && is_focused {
-                    batch.set(&item_name, &[
-                        ("label", &format!("[{}]", ws_id)),
-                        ("label.color", "0xff1d2021"),
-                        ("icon", icons),
-                        ("icon.color", "0xff1d2021"),
-                        ("icon.drawing", "on"),
-                        ("drawing", "on"),
-                        ("background.drawing", "on"),
-                        ("background.color", bg_color),
-                        ("display", &display_id.to_string()),
-                    ]);
-                } else if has_apps {
-                    batch.set(&item_name, &[
-                        ("label", &format!("[{}]", ws_id)),
-                        ("label.color", "0xffffffff"),
-                        ("icon.color", "0xffffffff"),
-                        ("icon", icons),
-                        ("icon.drawing", "on"),
-                        ("drawing", "on"),
-                        ("background.drawing", "off"),
-                        ("display", &display_id.to_string()),
-                    ]);
-                } else if is_focused {
-                    batch.set(&item_name, &[
-                        ("label", &format!("\u{f444} [{}]", ws_id)),
-                        ("label.color", "0xff1d2021"),
-                        ("icon.color", "0xff1d2021"),
-                        ("icon", ""),
-                        ("drawing", "on"),
-                        ("icon.drawing", "off"),
-                        ("background.drawing", "on"),
-                        ("background.color", bg_color),
-                        ("display", &display_id.to_string()),
-                    ]);
-                } else {
-                    // Empty and not focused
-                    if is_single_monitor {
-                        // Hide completely when single monitor
-                        batch.set(&item_name, &[
-                            ("drawing", "off"),
-                            ("background.drawing", "off"),
-                            ("icon.drawing", "off"),
-                            ("display", &display_id.to_string()),
-                        ]);
-                    } else {
-                        // Show when multiple monitors
-                        batch.set(&item_name, &[
-                            ("label", &format!("\u{f444} [{}]", ws_id)),
-                            ("label.color", "0xffffffff"),
-                            ("icon.color", "0xffffffff"),
-                            ("icon", ""),
-                            ("drawing", "on"),
-                            ("icon.drawing", "off"),
-                            ("background.drawing", "off"),
-                            ("display", &display_id.to_string()),
-                        ]);
-                    }
-                }
-                break; // Only update on the correct display
+        if has_apps && is_focused {
+            batch.set(&item_name, &[
+                ("label", &format!("[{}]", ws_id)),
+                ("label.color", &config.workspace_focused_label_color),
+                ("icon", icons),
+                ("icon.color", &config.workspace_focused_icon_color),
+                ("icon.drawing", "on"),
+                ("drawing", "on"),
+                ("background.drawing", "on"),
+                ("background.color", &config.workspace_bg_color),
+                ("display", &display_id.to_string()),
+            ]);
+        } else if has_apps {
+            batch.set(&item_name, &[
+                ("label", &format!("[{}]", ws_id)),
+                ("label.color", &config.workspace_unfocused_label_color),
+                ("icon.color", &config.workspace_unfocused_icon_color),
+                ("icon", icons),
+                ("icon.drawing", "on"),
+                ("drawing", "on"),
+                ("background.drawing", "off"),
+                ("display", &display_id.to_string()),
+            ]);
+        } else if is_focused {
+            batch.set(&item_name, &[
+                ("label", &format!("\u{f444} [{}]", ws_id)),
+                ("label.color", &config.workspace_focused_label_color),
+                ("icon.color", &config.workspace_focused_icon_color),
+                ("icon", ""),
+                ("drawing", "on"),
+                ("icon.drawing", "off"),
+                ("background.drawing", "on"),
+                ("background.color", &config.workspace_bg_color),
+                ("display", &display_id.to_string()),
+            ]);
+        } else {
+            // Empty and not focused
+            if is_single_monitor {
+                // Hide completely when single monitor
+                batch.set(&item_name, &[
+                    ("drawing", "off"),
+                    ("background.drawing", "off"),
+                    ("icon.drawing", "off"),
+                    ("display", &display_id.to_string()),
+                ]);
+            } else {
+                // Show when multiple monitors
+                batch.set(&item_name, &[
+                    ("label", &format!("\u{f444} [{}]", ws_id)),
+                    ("label.color", &config.workspace_unfocused_label_color),
+                    ("icon.color", &config.workspace_unfocused_icon_color),
+                    ("icon", ""),
+                    ("drawing", "on"),
+                    ("icon.drawing", "off"),
+                    ("background.drawing", "off"),
+                    ("display", &display_id.to_string()),
+                ]);
             }
         }
     }
@@ -437,11 +423,29 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     }
 
     // Update borders active color
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(40));
+    let border_arg = format!("active_color={}", config.border_active_color);
     if let Err(e) = Command::new("/opt/homebrew/bin/borders")
-        .arg("active_color=0xfffbf1c7")
+        .arg(&border_arg)
         .status()
     {
         eprintln!("Failed to update borders color: {}", e);
     }
+}
+
+pub fn handle_config_reload(state: &Arc<Mutex<DaemonState>>) {
+    // Load the new configuration
+    let new_config = Config::load();
+
+    // Update the state with the new config
+    if let Ok(mut s) = state.lock() {
+        s.config = new_config;
+        println!("Configuration reloaded successfully");
+    } else {
+        eprintln!("Failed to acquire lock for config reload");
+        return;
+    }
+
+    // Trigger a workspace refresh to apply new colors
+    handle_workspace_refresh(state);
 }

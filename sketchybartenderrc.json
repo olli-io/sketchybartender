@@ -1,0 +1,12 @@
+{
+  "clock_interval": 15,
+  "battery_interval": 120,
+  "brew_interval": 3600,
+  "teams_interval": 30,
+  "workspace_bg_color": "0xffc57fd4",
+  "workspace_focused_label_color": "0xff1d2021",
+  "workspace_focused_icon_color": "0xff1d2021",
+  "workspace_unfocused_label_color": "0xffffffff",
+  "workspace_unfocused_icon_color": "0xffffffff",
+  "border_active_color": "gradient(top_left=0xffbb60cd,bottom_right=0xffffabd2f)"
+}

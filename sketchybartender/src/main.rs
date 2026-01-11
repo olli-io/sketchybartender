@@ -3,7 +3,6 @@ mod config;
 mod daemon;
 mod handlers;
 mod icon_map;
-mod monitor_map;
 mod providers;
 
 use std::sync::{Arc, Mutex};
@@ -17,15 +16,7 @@ fn main() {
     let config = config::Config::load();
 
     // Shared state
-    let state = Arc::new(Mutex::new(DaemonState::default()));
-
-    // Initial refresh
-    handlers::handle_workspace_refresh(&state);
-    handlers::handle_clock_refresh();
-    handlers::handle_battery_refresh(None);
-    handlers::handle_focus_refresh(None, &state);
-    handlers::handle_brew_refresh();
-    handlers::handle_teams_refresh();
+    let state = Arc::new(Mutex::new(DaemonState::new(config.clone())));
 
     // Spawn timer threads for periodic updates using configured intervals
     let clock_interval = config.clock_interval;
@@ -61,5 +52,5 @@ fn main() {
     });
 
     // Start the daemon socket listener
-    daemon::start_daemon();
+    daemon::start_daemon(state);
 }

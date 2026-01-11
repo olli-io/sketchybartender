@@ -62,9 +62,11 @@ sketchybar --add event space_windows_change \
 ##### Adding Left Items #####
 sketchybar --add item front_app left \
            --set front_app \
+           script="$HOME/.local/bin/sketchycli on-focus-changed \$INFO" \
            label.font="Hack Nerd Font:Bold:13.0" \
            icon.drawing=off \
-           padding_left=0
+           padding_left=0 \
+           --subscribe front_app front_app_switched
 
 ##### Adding Right Items #####
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
@@ -75,7 +77,7 @@ sketchybar --add item clock right \
 
 sketchybar --add item battery right \
            --subscribe battery power_source_change \
-           --set battery script="$HOME/.local/bin/sketchycli on-power-source-changed "'$INFO'
+           --set battery script="$HOME/.local/bin/sketchycli on-power-source-changed \$INFO"
 
 sketchybar --add item brew right \
            --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked"

@@ -57,9 +57,8 @@ chmod +x "${INSTALL_DIR}/${BARTENDER_BINARY}"
 chmod +x "${INSTALL_DIR}/${CLI_BINARY}"
 
 # Copy the configuration file
-if [[ -f "${SCRIPT_DIR}/sketchybartenderrc" ]]; then
-    cp -f "${SCRIPT_DIR}/sketchybartenderrc" "${CONFIG_DIR}/sketchybartenderrc"
-    echo "✓ Configuration installed to ${CONFIG_DIR}/sketchybartenderrc"
+if [[ -f "${SCRIPT_DIR}/sketchybartenderrc.json" ]]; then
+    cp -f "${SCRIPT_DIR}/sketchybartenderrc.json" "${CONFIG_DIR}/sketchybartenderrc.json"
 fi
 
 echo "✓ sketchybartender installed to ${INSTALL_DIR}/${BARTENDER_BINARY}"
@@ -72,10 +71,8 @@ if [[ -f "${SCRIPT_DIR}/sketchybarrc" ]]; then
     # Backup existing sketchybarrc if it exists
     if [[ -f "${CONFIG_DIR}/sketchybarrc" ]]; then
         cp -f "${CONFIG_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc.bak"
-        echo "✓ Backed up existing sketchybarrc to ${CONFIG_DIR}/sketchybarrc.bak"
     fi
     cp -f "${SCRIPT_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc"
-    echo "✓ sketchybarrc copied to ${CONFIG_DIR}/sketchybarrc"
 fi
 
 echo "✓ Reloading sketchybar..."
@@ -89,6 +86,6 @@ echo "  - ${INSTALL_DIR}/${BARTENDER_BINARY}"
 echo "  - ${INSTALL_DIR}/${CLI_BINARY}"
 echo ""
 echo "Configuration:"
-echo "  - ${CONFIG_DIR}/sketchybartenderrc"
+echo "  - ${CONFIG_DIR}/sketchybartenderrc.json"
 echo "  - ${CONFIG_DIR}/sketchybarrc"
 echo ""

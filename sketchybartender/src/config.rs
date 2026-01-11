@@ -1,11 +1,12 @@
 //! Configuration module for sketchybartender update intervals
 
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
 /// Configuration for update intervals (in seconds)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Clock update interval (default: 15 seconds)
     pub clock_interval: u64,
@@ -15,6 +16,18 @@ pub struct Config {
     pub brew_interval: u64,
     /// Teams notification check interval (default: 30 seconds)
     pub teams_interval: u64,
+    /// Workspace background color (default: 0xfff38ba8)
+    pub workspace_bg_color: String,
+    /// Workspace focused label color (default: 0xff1d2021)
+    pub workspace_focused_label_color: String,
+    /// Workspace focused icon color (default: 0xff1d2021)
+    pub workspace_focused_icon_color: String,
+    /// Workspace unfocused label color (default: 0xffffffff)
+    pub workspace_unfocused_label_color: String,
+    /// Workspace unfocused icon color (default: 0xffffffff)
+    pub workspace_unfocused_icon_color: String,
+    /// Border active color (default: gradient(top_left=0xffbb60cd,bottom_right=0xffffad00))
+    pub border_active_color: String,
 }
 
 impl Default for Config {
@@ -24,6 +37,12 @@ impl Default for Config {
             battery_interval: 120,
             brew_interval: 3600,
             teams_interval: 30,
+            workspace_bg_color: "0xfff38ba8".to_string(),
+            workspace_focused_label_color: "0xff1d2021".to_string(),
+            workspace_focused_icon_color: "0xff1d2021".to_string(),
+            workspace_unfocused_label_color: "0xffffffff".to_string(),
+            workspace_unfocused_icon_color: "0xffffffff".to_string(),
+            border_active_color: "gradient(top_left=0xffbb60cd,bottom_right=0xffffad00)".to_string(),
         }
     }
 }
@@ -63,7 +82,7 @@ impl Config {
                 PathBuf::from(home).join(".config")
             });
 
-        config_dir.join("sketchybar").join("sketchybartenderrc")
+        config_dir.join("sketchybar").join("sketchybartenderrc.json")
     }
 
     /// Load configuration from a file
@@ -71,46 +90,8 @@ impl Config {
         let contents = fs::read_to_string(path)
             .map_err(|e| format!("Failed to read file: {}", e))?;
 
-        let mut config = Self::default();
-
-        for line in contents.lines() {
-            let line = line.trim();
-
-            // Skip empty lines and comments
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-
-            // Parse key=value pairs
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                let value = value.trim();
-
-                match key {
-                    "clock_interval" => {
-                        config.clock_interval = value.parse()
-                            .map_err(|_| format!("Invalid value for clock_interval: {}", value))?;
-                    }
-                    "battery_interval" => {
-                        config.battery_interval = value.parse()
-                            .map_err(|_| format!("Invalid value for battery_interval: {}", value))?;
-                    }
-                    "brew_interval" => {
-                        config.brew_interval = value.parse()
-                            .map_err(|_| format!("Invalid value for brew_interval: {}", value))?;
-                    }
-                    "teams_interval" => {
-                        config.teams_interval = value.parse()
-                            .map_err(|_| format!("Invalid value for teams_interval: {}", value))?;
-                    }
-                    _ => {
-                        eprintln!("Warning: Unknown config key: {}", key);
-                    }
-                }
-            }
-        }
-
-        Ok(config)
+        serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse JSON config: {}", e))
     }
 
     /// Save configuration to a file
@@ -121,26 +102,8 @@ impl Config {
                 .map_err(|e| format!("Failed to create config directory: {}", e))?;
         }
 
-        let contents = format!(
-            "# Sketchybartender Configuration\n\
-             # Update intervals in seconds\n\
-             \n\
-             # Clock update interval (default: 15)\n\
-             clock_interval = {}\n\
-             \n\
-             # Battery update interval (default: 120)\n\
-             battery_interval = {}\n\
-             \n\
-             # Brew outdated check interval (default: 3600)\n\
-             brew_interval = {}\n\
-             \n\
-             # Teams notification check interval (default: 30)\n\
-             teams_interval = {}\n",
-            self.clock_interval,
-            self.battery_interval,
-            self.brew_interval,
-            self.teams_interval,
-        );
+        let contents = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
         fs::write(path, contents)
             .map_err(|e| format!("Failed to write config file: {}", e))?;
