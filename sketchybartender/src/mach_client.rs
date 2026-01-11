@@ -193,7 +193,7 @@ fn send_message(port: mach_port_t, message: &[u8]) -> Result<Option<String>, Str
         }
 
         // Receive the response with timeout
-        let mut buffer: MachBuffer = unsafe { std::mem::zeroed() };
+        let mut buffer: MachBuffer = std::mem::zeroed();
 
         let kr = mach_msg(
             &mut buffer.message.header as *mut _,
@@ -262,6 +262,7 @@ pub fn sketchybar(command: &str) -> Result<Option<String>, String> {
 }
 
 /// Reset the cached mach port (useful if sketchybar restarts)
+#[allow(dead_code)]
 pub fn reset_port() {
     let mut cached_port = MACH_PORT.lock().unwrap();
     *cached_port = None;

@@ -1,5 +1,6 @@
 use std::process::Command;
 use sysinfo::System;
+use chrono::Local;
 
 /// Battery information
 #[derive(Debug, Clone)]
@@ -111,17 +112,8 @@ pub fn get_volume() -> Option<VolumeInfo> {
 
 /// Get current time formatted as DD/MM HH:MM
 pub fn get_clock() -> String {
-    // Use shell command to avoid pulling in chrono dependency
-    let output = Command::new("date")
-        .args(["+%d/%m %H:%M"])
-        .output();
-    
-    match output {
-        Ok(o) if o.status.success() => {
-            String::from_utf8_lossy(&o.stdout).trim().to_string()
-        }
-        _ => "??/?? ??:??".to_string()
-    }
+    let now = Local::now();
+    now.format("%d/%m %H:%M").to_string()
 }
 
 
@@ -134,6 +126,7 @@ pub struct BrewInfo {
 
 impl BrewInfo {
     /// Get the total count of outdated packages
+    #[allow(dead_code)]
     pub fn total(&self) -> usize {
         self.formulae + self.casks
     }
@@ -184,11 +177,13 @@ pub struct SystemInfo {
 
 impl SystemInfo {
     /// Get the CPU icon
+    #[allow(dead_code)]
     pub fn cpu_icon(&self) -> &'static str {
         "\u{f0ee0}" // nf-md-cpu_64_bit
     }
 
     /// Get the RAM icon
+    #[allow(dead_code)]
     pub fn ram_icon(&self) -> &'static str {
         "\u{f035b}" // nf-md-memory
     }

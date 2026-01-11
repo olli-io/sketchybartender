@@ -55,28 +55,15 @@ pub fn get_windows() -> Vec<WindowInfo> {
     serde_json::from_slice(&output.stdout).unwrap_or_default()
 }
 
-/// Get the currently focused app
-pub fn get_focused_app() -> Option<String> {
-    let output = Command::new("aerospace")
-        .args(["list-windows", "--focused", "--format", "%{app-name}"])
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let app = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !app.is_empty() {
-            return Some(app);
-        }
-    }
-    None
-}
 
 /// Information about the focused workspace from aerospace
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct FocusedWorkspaceInfo {
     pub workspace: String,
+    #[allow(dead_code)]
     pub workspace_is_focused: bool,
+    #[allow(dead_code)]
     pub workspace_is_visible: bool,
     #[serde(rename = "monitor-appkit-nsscreen-screens-id")]
     pub display_id: u32,

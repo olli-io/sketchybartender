@@ -91,6 +91,7 @@ sketchybar --add item sysinfo right \
 
 sketchybar --add item teams right \
            --set teams icon="󰊻" icon.color=0xffffffff icon.font="Hack Nerd Font:Regular:18.0" \
+           mouse.cursor=pointer \
            click_script="$HOME/.local/bin/sketchycli on-teams-clicked"
 ##### Force all scripts to run the first time #####
 sketchybar --update

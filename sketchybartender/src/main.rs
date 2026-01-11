@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use chrono::{Local, Timelike};
 use handlers::DaemonState;
 
 fn main() {
@@ -20,10 +21,32 @@ fn main() {
     let state = Arc::new(Mutex::new(DaemonState::new(config.clone())));
 
     // Spawn timer threads for periodic updates using configured intervals
-    let clock_interval = config.clock_interval;
+    // Smart clock refresh: poll every 2 seconds until minute changes, then switch to 1-minute intervals
     thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_clock_refresh();
+        
+        // Track the current minute
+        let last_minute = Local::now().minute();
+        
+        // Poll every 2 seconds until we detect a minute change
         loop {
-            thread::sleep(Duration::from_secs(clock_interval));
+            thread::sleep(Duration::from_secs(2));
+            let current_minute = Local::now().minute();
+            
+            if current_minute != last_minute {
+                // Minute changed! Wait 0.5 seconds and switch to 1-minute intervals
+                thread::sleep(Duration::from_millis(500));
+                handlers::handle_clock_refresh();
+                break;
+            }
+            
+            handlers::handle_clock_refresh();
+        }
+        
+        // Now use 1-minute intervals, synchronized to the minute boundary
+        loop {
+            thread::sleep(Duration::from_secs(60));
             handlers::handle_clock_refresh();
         }
     });

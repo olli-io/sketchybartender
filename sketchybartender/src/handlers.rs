@@ -5,7 +5,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::aerospace;
-use crate::config::Config;
 use crate::icon_map;
 use crate::mach_client;
 use crate::providers;
@@ -197,6 +196,48 @@ pub fn handle_teams_refresh() {
     }
 }
 
+pub fn handle_teams_clicked() {
+    // Create continuous pulsing animation for the teams icon
+    let mut batch = SketchybarBatch::new();
+
+    // Chain 8 bounce cycles (up and down) for ~4 seconds total
+    for _ in 0..1 {
+        batch.animate("sin", 15)  // Bounce up (0.25 seconds)
+             .set("teams", &[("icon.y_offset", "-3")])
+             .animate("sin", 15)  // Bounce down (0.25 seconds)
+             .set("teams", &[("icon.y_offset", "0")]);
+    }
+
+    if let Err(e) = batch.execute() {
+        eprintln!("Failed to start teams animation: {}", e);
+    }
+
+    thread::spawn(|| {
+        // Open Microsoft Teams app
+        let result = Command::new("open")
+            .arg("/Applications/Microsoft Teams.app")
+            .output();
+
+        match result {
+            Ok(output) => {
+                if !output.status.success() {
+                    eprintln!("Failed to open Microsoft Teams: {}", String::from_utf8_lossy(&output.stderr));
+                }
+            }
+            Err(e) => eprintln!("Failed to run open command: {}", e),
+        }
+
+        // Wait for 2 seconds
+        thread::sleep(Duration::from_secs(2));
+
+        // Reset icon offset and refresh teams notifications
+        if let Err(e) = set_item("teams", &[("icon.y_offset", "0")]) {
+            eprintln!("Failed to reset teams icon offset: {}", e);
+        }
+        handle_teams_refresh();
+    });
+}
+
 pub fn handle_system_refresh() {
     let info = providers::get_system_info();
     if let Err(e) = set_item("sysinfo", &[
@@ -269,7 +310,13 @@ pub fn handle_volume_refresh(vol: Option<u8>) {
 }
 
 pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
-    let app_name = app.unwrap_or_else(|| "unknown".to_string());
+    let mut app_name = app.unwrap_or_else(|| "unknown".to_string());
+    
+    // Remove "Microsoft " prefix from app names
+    if app_name.starts_with("Microsoft ") {
+        app_name = app_name.strip_prefix("Microsoft ").unwrap().to_string();
+    }
+    
     let icon = icon_map::get_icon(&app_name);
 
     // Update state
@@ -427,21 +474,4 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     {
         eprintln!("Failed to update borders color: {}", e);
     }
-}
-
-pub fn handle_config_reload(state: &Arc<Mutex<DaemonState>>) {
-    // Load the new configuration
-    let new_config = Config::load();
-
-    // Update the state with the new config
-    if let Ok(mut s) = state.lock() {
-        s.config = new_config;
-        println!("Configuration reloaded successfully");
-    } else {
-        eprintln!("Failed to acquire lock for config reload");
-        return;
-    }
-
-    // Trigger a workspace refresh to apply new colors
-    handle_workspace_refresh(state);
 }
