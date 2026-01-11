@@ -20,6 +20,28 @@ fn main() {
     // Shared state
     let state = Arc::new(Mutex::new(DaemonState::new(config.clone())));
 
+    // Spawn brew refresh early (before delay) since it takes the longest
+    let brew_interval = config.brew_interval;
+    thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_brew_refresh();
+        
+        loop {
+            thread::sleep(Duration::from_secs(brew_interval));
+            handlers::handle_brew_refresh();
+        }
+    });
+
+    // Wait for sketchybar to be ready
+    thread::sleep(Duration::from_millis(200));
+
+    // Spawn refresh thread for workspace (event-driven, but needs initial refresh)
+    let workspace_state = Arc::clone(&state);
+    thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_workspace_refresh(&workspace_state);
+    });
+
     // Spawn timer threads for periodic updates using configured intervals
     // Smart clock refresh: poll every 2 seconds until minute changes, then switch to 1-minute intervals
     thread::spawn(move || {
@@ -53,22 +75,20 @@ fn main() {
 
     let battery_interval = config.battery_interval;
     thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_battery_refresh(None);
+        
         loop {
             thread::sleep(Duration::from_secs(battery_interval));
             handlers::handle_battery_refresh(None);
         }
     });
 
-    let brew_interval = config.brew_interval;
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_secs(brew_interval));
-            handlers::handle_brew_refresh();
-        }
-    });
-
     let teams_interval = config.teams_interval;
     thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_teams_refresh();
+        
         loop {
             thread::sleep(Duration::from_secs(teams_interval));
             handlers::handle_teams_refresh();
@@ -77,6 +97,9 @@ fn main() {
 
     let system_interval = config.system_interval;
     thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_system_refresh();
+        
         loop {
             thread::sleep(Duration::from_secs(system_interval));
             handlers::handle_system_refresh();

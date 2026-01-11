@@ -88,14 +88,6 @@ pub fn start_daemon(state: Arc<Mutex<DaemonState>>) {
     let listener = UnixListener::bind(&socket_path).expect("Failed to bind socket");
     println!("Sketchybar helper daemon listening on {:?}", socket_path);
 
-    // Perform initial refresh after sketchybar is ready
-    handle_workspace_refresh(&state);
-    handle_battery_refresh(None);
-    handle_clock_refresh();
-    handle_brew_refresh();
-    handle_system_refresh();
-    handle_teams_refresh();
-
     // Accept connections
     for stream in listener.incoming() {
         match stream {

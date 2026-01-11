@@ -1,4 +1,5 @@
 use std::process::Command;
+use std::thread;
 use sysinfo::System;
 use chrono::Local;
 
@@ -139,31 +140,47 @@ impl BrewInfo {
 
 /// Get outdated brew formulae and casks count
 pub fn get_brew_outdated() -> BrewInfo {
-    let mut info = BrewInfo::default();
+    // Run both brew commands in parallel for faster results
+    let formulae_handle = thread::spawn(|| {
+        Command::new("brew")
+            .args(["outdated", "--formula", "-q"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    Some(stdout.lines().filter(|l| !l.is_empty()).count())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
+    });
 
-    // Get outdated formulae
-    if let Ok(output) = Command::new("brew")
-        .args(["outdated", "--formula", "-q"])
-        .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            info.formulae = stdout.lines().filter(|l| !l.is_empty()).count();
-        }
+    let casks_handle = thread::spawn(|| {
+        Command::new("brew")
+            .args(["outdated", "--cask", "-q"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    Some(stdout.lines().filter(|l| !l.is_empty()).count())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
+    });
+
+    // Wait for both threads to complete
+    let formulae = formulae_handle.join().unwrap_or(0);
+    let casks = casks_handle.join().unwrap_or(0);
+
+    BrewInfo {
+        formulae,
+        casks,
     }
-
-    // Get outdated casks
-    if let Ok(output) = Command::new("brew")
-        .args(["outdated", "--cask", "-q"])
-        .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            info.casks = stdout.lines().filter(|l| !l.is_empty()).count();
-        }
-    }
-
-    info
 }
 
 /// CPU and RAM usage information
