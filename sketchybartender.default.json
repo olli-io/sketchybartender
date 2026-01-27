@@ -9,5 +9,5 @@
   "workspace_focused_icon_color": "0xff1d2021",
   "workspace_unfocused_label_color": "0xffffffff",
   "workspace_unfocused_icon_color": "0xffffffff",
-  "border_active_color": "gradient(top_left=0xffbb60cd,bottom_right=0xffffabd2f)"
+  "border_active_color": "gradient(top_left=0xffd3869b,bottom_right=0xffd8a657)"
 }

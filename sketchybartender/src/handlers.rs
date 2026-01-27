@@ -9,6 +9,66 @@ use crate::icon_map;
 use crate::mach_client;
 use crate::providers;
 
+/// Parse a color like "0xffbb60cd" to (r, g, b) tuple
+fn parse_color(color: &str) -> Option<(u8, u8, u8)> {
+    let hex = color.strip_prefix("0x")?;
+    // Handle both 8-char (with alpha) and potentially malformed inputs
+    if hex.len() < 6 {
+        return None;
+    }
+    // Skip alpha (first 2 chars if 8 chars), parse RGB from last 6 chars
+    let rgb_start = if hex.len() >= 8 { hex.len() - 6 } else { 0 };
+    let r = u8::from_str_radix(&hex[rgb_start..rgb_start + 2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[rgb_start + 2..rgb_start + 4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[rgb_start + 4..rgb_start + 6], 16).ok()?;
+    Some((r, g, b))
+}
+
+/// Parse gradient string like "gradient(top_left=0xffbb60cd,bottom_right=0xfffabd2f)"
+fn parse_gradient(gradient: &str) -> Option<((u8, u8, u8), (u8, u8, u8))> {
+    let inner = gradient.strip_prefix("gradient(")?.strip_suffix(")")?;
+    let mut top_left = None;
+    let mut bottom_right = None;
+
+    for part in inner.split(',') {
+        if let Some((key, value)) = part.split_once('=') {
+            match key.trim() {
+                "top_left" => top_left = parse_color(value.trim()),
+                "bottom_right" => bottom_right = parse_color(value.trim()),
+                _ => {}
+            }
+        }
+    }
+
+    Some((top_left?, bottom_right?))
+}
+
+/// Generate a linear gradient with n steps between two colors
+fn generate_gradient(start: (u8, u8, u8), end: (u8, u8, u8), steps: usize) -> Vec<String> {
+    if steps <= 1 {
+        return vec![format!("0xff{:02x}{:02x}{:02x}", start.0, start.1, start.2)];
+    }
+    (0..steps)
+        .map(|i| {
+            let t = i as f32 / (steps - 1) as f32;
+            let r = (start.0 as f32 + (end.0 as f32 - start.0 as f32) * t) as u8;
+            let g = (start.1 as f32 + (end.1 as f32 - start.1 as f32) * t) as u8;
+            let b = (start.2 as f32 + (end.2 as f32 - start.2 as f32) * t) as u8;
+            format!("0xff{:02x}{:02x}{:02x}", r, g, b)
+        })
+        .collect()
+}
+
+/// Get gradient colors from border_active_color config (15 steps)
+fn get_workspace_gradient_colors(config: &crate::config::Config) -> Vec<String> {
+    if let Some((start, end)) = parse_gradient(&config.border_active_color) {
+        generate_gradient(start, end, 15)
+    } else {
+        // Fallback: use workspace_bg_color for all
+        vec![config.workspace_bg_color.clone(); 15]
+    }
+}
+
 /// A builder for batching sketchybar commands
 #[derive(Debug, Default)]
 pub struct SketchybarBatch {
@@ -399,7 +459,16 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     let is_single_monitor = all_displays.len() == 1;
 
     // Show all windows on multiple monitors, one icon per app on single monitor
-    let infos = aerospace::get_workspace_infos(!is_single_monitor);
+    let mut infos = aerospace::get_workspace_infos(!is_single_monitor);
+    
+    // Manual display mapping: swap display 2 with display 3
+    for info in infos.values_mut() {
+        if info.display_id == 2 {
+            info.display_id = 3;
+        } else if info.display_id == 3 {
+            info.display_id = 2;
+        }
+    }
 
     // Get the set of current workspaces
     let current_workspaces: HashSet<String> = infos.keys().cloned().collect();
@@ -413,6 +482,9 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     } else {
         return;
     };
+
+    // Generate gradient colors from border_active_color (10 steps)
+    let gradient_colors = get_workspace_gradient_colors(&config);
 
     // Find workspaces that need to be cleared
     let workspaces_to_clear: HashSet<String> = previous_workspaces
@@ -435,8 +507,13 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         }
     }
 
-    // Process each workspace from the fresh aerospace data
-    for (ws_id, info) in &infos {
+    // Sort workspaces by ID to get consistent bar order
+    let mut sorted_ws_ids: Vec<&String> = infos.keys().collect();
+    sorted_ws_ids.sort();
+
+    // Process each workspace in sorted order (matching bar position)
+    for (position, ws_id) in sorted_ws_ids.iter().enumerate() {
+        let info = &infos[*ws_id];
         let has_apps = !info.apps.is_empty();
         let is_focused = info.is_focused;
         let display_id = info.display_id;
@@ -471,7 +548,10 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         ];
 
         if is_focused {
-            settings.push(("background.color", config.workspace_bg_color.to_string()));
+            // Use gradient color based on position in bar (0-indexed)
+            let ws_index = position % gradient_colors.len();
+            let bg_color = &gradient_colors[ws_index];
+            settings.push(("background.color", bg_color.to_string()));
         }
 
         let settings_refs: Vec<(&str, &str)> = settings
