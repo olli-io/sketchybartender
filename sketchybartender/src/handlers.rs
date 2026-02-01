@@ -301,7 +301,7 @@ pub fn handle_teams_clicked() {
 pub fn handle_system_refresh() {
     let info = providers::get_system_info();
     if let Err(e) = set_item("sysinfo", &[
-        ("label", &format!("{:.1}/{:.0}GB", info.ram_used_gb, info.ram_total_gb)),
+        ("label", &format!("{}% | {:.1}/{:.0}GB", info.cpu_percentage, info.ram_used_gb, info.ram_total_gb)),
     ]) {
         eprintln!("Failed to update sysinfo: {}", e);
     }

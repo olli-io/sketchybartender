@@ -72,24 +72,22 @@ sketchybar --add item front_app left \
 sketchybar --add item clock right \
            --set clock
 
-sketchybar --add item volume right \
-           --set volume script="$HOME/.local/bin/sketchycli on-volume-changed \$INFO" \
-           --subscribe volume volume_change
-
 sketchybar --add item battery right \
-           --subscribe battery power_source_change \
+           --subscribe battery power_source_change system_woke\
            --set battery script="$HOME/.local/bin/sketchycli on-power-source-changed \$INFO"
-
-sketchybar --add item brew right \
-           --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked"
 
 # System info showing RAM usage in GB
 sketchybar --add item sysinfo right \
            --set sysinfo \
            icon.drawing=off \
-           label.font="JetbrainsMono Nerd Font:Regular:12.0"
+           label.font="JetbrainsMono Nerd Font:Bold:13.0"
 
+sketchybar --add item brew right \
+           --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked"
+           
 sketchybar --add item teams right \
            --set teams icon="󰊻" icon.color=0xffffffff icon.font="Hack Nerd Font:Regular:18.0" \
            mouse.cursor=pointer \
            click_script="$HOME/.local/bin/sketchycli on-teams-clicked"
+
+sketchybar --update
