@@ -12,35 +12,14 @@ use crate::providers;
 /// Parse a color like "0xffbb60cd" to (r, g, b) tuple
 fn parse_color(color: &str) -> Option<(u8, u8, u8)> {
     let hex = color.strip_prefix("0x")?;
-    // Handle both 8-char (with alpha) and potentially malformed inputs
     if hex.len() < 6 {
         return None;
     }
-    // Skip alpha (first 2 chars if 8 chars), parse RGB from last 6 chars
     let rgb_start = if hex.len() >= 8 { hex.len() - 6 } else { 0 };
     let r = u8::from_str_radix(&hex[rgb_start..rgb_start + 2], 16).ok()?;
     let g = u8::from_str_radix(&hex[rgb_start + 2..rgb_start + 4], 16).ok()?;
     let b = u8::from_str_radix(&hex[rgb_start + 4..rgb_start + 6], 16).ok()?;
     Some((r, g, b))
-}
-
-/// Parse gradient string like "gradient(top_left=0xffbb60cd,bottom_right=0xfffabd2f)"
-fn parse_gradient(gradient: &str) -> Option<((u8, u8, u8), (u8, u8, u8))> {
-    let inner = gradient.strip_prefix("gradient(")?.strip_suffix(")")?;
-    let mut top_left = None;
-    let mut bottom_right = None;
-
-    for part in inner.split(',') {
-        if let Some((key, value)) = part.split_once('=') {
-            match key.trim() {
-                "top_left" => top_left = parse_color(value.trim()),
-                "bottom_right" => bottom_right = parse_color(value.trim()),
-                _ => {}
-            }
-        }
-    }
-
-    Some((top_left?, bottom_right?))
 }
 
 /// Generate a linear gradient with n steps between two colors
@@ -59,13 +38,17 @@ fn generate_gradient(start: (u8, u8, u8), end: (u8, u8, u8), steps: usize) -> Ve
         .collect()
 }
 
-/// Get gradient colors from border_active_color config (15 steps)
+/// Get workspace background colors (15 steps) from config gradient fields
 fn get_workspace_gradient_colors(config: &crate::config::Config) -> Vec<String> {
-    if let Some((start, end)) = parse_gradient(&config.border_active_color) {
-        generate_gradient(start, end, 15)
-    } else {
-        // Fallback: use workspace_bg_color for all
-        vec![config.workspace_bg_color.clone(); 15]
+    if !config.workspace_gradient {
+        return vec![config.workspace_gradient_start.clone(); 15];
+    }
+    match (
+        parse_color(&config.workspace_gradient_start),
+        parse_color(&config.workspace_gradient_end),
+    ) {
+        (Some(start), Some(end)) => generate_gradient(start, end, 15),
+        _ => vec![config.workspace_gradient_start.clone(); 15],
     }
 }
 

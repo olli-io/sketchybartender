@@ -30,6 +30,12 @@ pub struct Config {
     pub workspace_unfocused_icon_color: String,
     /// Border active color (default: gradient(top_left=0xffbb60cd,bottom_right=0xffffad00))
     pub border_active_color: String,
+    /// Whether to use a gradient for the workspace background
+    pub workspace_gradient: bool,
+    /// Workspace background gradient start color
+    pub workspace_gradient_start: String,
+    /// Workspace background gradient end color
+    pub workspace_gradient_end: String,
 }
 
 impl Default for Config {
@@ -46,6 +52,9 @@ impl Default for Config {
             workspace_unfocused_label_color: "0xffffffff".to_string(),
             workspace_unfocused_icon_color: "0xffffffff".to_string(),
             border_active_color: "gradient(top_left=0xffbb60cd,bottom_right=0xffffad00)".to_string(),
+            workspace_gradient: true,
+            workspace_gradient_start: "0xffbb60cd".to_string(),
+            workspace_gradient_end: "0xffd8a657".to_string(),
         }
     }
 }
