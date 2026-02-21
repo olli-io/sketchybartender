@@ -11,7 +11,7 @@ nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
 nohup "/opt/homebrew/bin/miniserve ${HOME}/.config/html/vimium-landing.html" --port 8082 >/dev/null 2>&1 &
 
 ##### Bar Appearance #####
-sketchybar --bar position=top height=40 blur_radius=0 color=0x001d2021 margin=0 padding_top=6 padding_left=6 padding_right=6
+sketchybar --bar position=top height=38 blur_radius=0 color=0x001d2021 margin=0 padding_left=5 padding_right=5
 ##### Changing Defaults #####
 default=(
   icon.font="JetbrainsMono Nerd Font:Bold:15.0"
@@ -21,7 +21,7 @@ default=(
   icon.padding_left=6
   icon.padding_right=6
   label.padding_right=6
-  padding_right=6
+  padding_right=4
 )
 sketchybar --default "${default[@]}"
 
@@ -31,7 +31,7 @@ sketchybar --default "${default[@]}"
 
 # Add workspace items for lettered workspaces (no subscriptions, updated by workspace_manager)
 sketchybar --add item workspace_spacer left \
-           --set workspace_spacer width=6 icon.drawing=off label.drawing=off padding_left=0 padding_right=0
+           --set workspace_spacer width=15 icon.drawing=off label.drawing=off padding_left=0 padding_right=0
 
 workspace_items=()
 for workspace in {1..9} {a..z} ; do
@@ -69,7 +69,7 @@ sketchybar --add item front_app left \
            label.font="Hack Nerd Font:Bold:13.0" \
            icon.drawing=off \
            padding_left=6 \
-           padding_right=10 \
+           padding_right=15 \
            --subscribe front_app front_app_switched
 
 sketchybar --add bracket left_bg workspace_spacer "${workspace_items[@]}" front_app \
@@ -82,9 +82,11 @@ sketchybar --add bracket left_bg workspace_spacer "${workspace_items[@]}" front_
 ##### Adding Right Items #####
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
+sketchybar --add item clock_spacer right \
+           --set clock_spacer width=15 icon.drawing=off label.drawing=off padding_left=0 padding_right=0
+
 sketchybar --add item clock right \
            --set clock
-           --set padding_right=10
 
 sketchybar --add item battery right \
            --subscribe battery power_source_change system_woke\
@@ -104,15 +106,16 @@ sketchybar --add item teams right \
            icon="󰊻" \
            icon.color=0xffffffff \
            icon.font="Hack Nerd Font:Regular:18.0" \
-           padding_left=10 \
+           padding_left=15 \
            mouse.cursor=pointer \
            click_script="$HOME/.local/bin/sketchycli on-teams-clicked"
 
-sketchybar --add bracket right_bg clock battery sysinfo brew teams \
+sketchybar --add bracket right_bg clock_spacer clock battery sysinfo brew teams \
            --set right_bg \
            background.color=0xff1d2021 \
            background.corner_radius=16 \
            background.height=30 \
            background.drawing=on
+           margin_right=10
 
 sketchybar --update

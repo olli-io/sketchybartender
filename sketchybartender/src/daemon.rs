@@ -8,6 +8,7 @@ use std::thread;
 
 use crate::handlers::{
     DaemonState,
+    handle_aerospace_focus,
     handle_battery_refresh,
     handle_brew_refresh,
     handle_brew_upgrade,
@@ -40,6 +41,11 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
                 handle_focus_refresh(app_name, &state);
             }
             Some("on-workspace-changed") => handle_workspace_refresh(&state),
+            Some("on-aerospace-focus") => {
+                if let Some(workspace) = parts.get(1).map(|s| s.to_string()) {
+                    handle_aerospace_focus(workspace, &state);
+                }
+            }
             Some("on-brew-clicked") => handle_brew_upgrade(),
             Some("on-teams-clicked") => handle_teams_clicked(),
             Some("trigger-teams-refresh") => handle_teams_refresh(),

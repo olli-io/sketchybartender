@@ -5,6 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::aerospace;
+use crate::aerospace_focus;
 use crate::icon_map;
 use crate::mach_client;
 use crate::providers;
@@ -552,6 +553,11 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         }
     }
 
+    // Ensure configured app is running in the focused workspace
+    if let Some(focused_ws) = infos.iter().find(|(_, info)| info.is_focused).map(|(id, _)| id.clone()) {
+        aerospace_focus::ensure_workspace_app(&focused_ws);
+    }
+
     // Update borders active color
     std::thread::sleep(std::time::Duration::from_millis(40));
     let border_arg = format!("active_color={}", config.border_active_color);
@@ -562,3 +568,14 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         eprintln!("Failed to update borders color: {}", e);
     }
 }
+
+/// Focus a workspace via aerospace and launch its configured app if not already running.
+/// Runs in a background thread so the daemon doesn't block on the app launch.
+pub fn handle_aerospace_focus(workspace: String, state: &Arc<Mutex<DaemonState>>) {
+    let state = Arc::clone(state);
+    thread::spawn(move || {
+        aerospace_focus::focus_workspace(&workspace);
+        handle_workspace_refresh(&state);
+    });
+}
+
