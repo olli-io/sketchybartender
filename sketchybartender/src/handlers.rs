@@ -553,11 +553,6 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         }
     }
 
-    // Ensure configured app is running in the focused workspace
-    if let Some(focused_ws) = infos.iter().find(|(_, info)| info.is_focused).map(|(id, _)| id.clone()) {
-        aerospace_focus::ensure_workspace_app(&focused_ws);
-    }
-
     // Update borders active color
     std::thread::sleep(std::time::Duration::from_millis(40));
     let border_arg = format!("active_color={}", config.border_active_color);
