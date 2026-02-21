@@ -29,7 +29,7 @@ impl BatteryInfo {
         } else if self.percentage <= 10 {
             "0xfffb4934" // Red when battery is critically low
         } else {
-            "0xffffffff" // White when not charging
+            "0xffF5EEE2" // White when not charging
         }
     }
 
@@ -237,10 +237,10 @@ pub fn get_system_info() -> SystemInfo {
     // Get RAM usage using sysinfo crate (much more efficient and accurate)
     let mut sys = System::new();
     sys.refresh_memory();
-    
+
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
-    
+
     if total_memory > 0 {
         info.ram_percentage = ((used_memory as f64 / total_memory as f64) * 100.0).round() as u8;
         info.ram_used_gb = (used_memory as f64 / 1_073_741_824.0) as f32;
@@ -270,7 +270,7 @@ impl TeamsInfo {
         } else if self.notification_count > 0 {
             "0xfffabd2f" // Yellow/amber when notifications
         } else {
-            "0xffffffff" // White (same as other icons)
+            "0xffF5EEE2" // White (same as other icons)
         }
     }
 
