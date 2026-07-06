@@ -148,7 +148,7 @@ fn update_volume(icon: &str, percentage: u8) -> Result<(), std::io::Error> {
 fn update_front_app(icon: &str, app_name: &str) -> Result<(), std::io::Error> {
     set_item("front_app", &[
         ("icon", icon),
-        ("label", &format!("❯ {}", app_name)),
+        ("label", &format!("› {}", app_name)),
     ])
 }
 

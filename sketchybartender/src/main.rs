@@ -86,17 +86,6 @@ fn main() {
         }
     });
 
-    let teams_interval = config.teams_interval;
-    thread::spawn(move || {
-        // Initial refresh
-        handlers::handle_teams_refresh();
-        
-        loop {
-            thread::sleep(Duration::from_secs(teams_interval));
-            handlers::handle_teams_refresh();
-        }
-    });
-
     let system_interval = config.system_interval;
     thread::spawn(move || {
         // Initial refresh

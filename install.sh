@@ -62,8 +62,12 @@ cd "${SCRIPT_DIR}"
     fi
     cp -f "${SCRIPT_DIR}/sketchybarrc" "${CONFIG_DIR}/sketchybarrc"
 
-echo "✓ Reloading sketchybar..."
-sketchybar --reload
+if command -v sketchybar &> /dev/null; then
+    echo "✓ Reloading sketchybar..."
+    sketchybar --reload || echo "Warning: sketchybar --reload failed (is sketchybar running?)"
+else
+    echo "Warning: sketchybar not found on PATH, skipping reload"
+fi
 
 echo ""
 echo "==> Installation complete!"
