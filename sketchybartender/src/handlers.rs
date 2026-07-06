@@ -282,8 +282,9 @@ pub fn handle_teams_clicked() {
     });
 }
 
-pub fn handle_system_refresh() {
-    let info = providers::get_system_info();
+pub fn handle_system_refresh(prev_cpu: &mut Option<providers::CpuTicks>) {
+    let (info, cur_cpu) = providers::get_system_info(*prev_cpu);
+    *prev_cpu = cur_cpu;
     if let Err(e) = set_item("sysinfo", &[
         ("label", &format!("{}% | {:.1}/{:.0}GB", info.cpu_percentage, info.ram_used_gb, info.ram_total_gb)),
     ]) {

@@ -1,6 +1,5 @@
 use std::process::Command;
 use std::thread;
-use sysinfo::System;
 use chrono::Local;
 
 /// Battery information
@@ -206,48 +205,133 @@ impl SystemInfo {
     }
 }
 
-/// Get current CPU and RAM usage
-pub fn get_system_info() -> SystemInfo {
+/// A snapshot of cumulative CPU ticks since boot: (busy, total).
+/// `busy` = user + system + nice; `total` = busy + idle.
+pub type CpuTicks = (u64, u64);
+
+/// Read the kernel's cumulative CPU-tick counters via `host_statistics`.
+///
+/// This is the same `HOST_CPU_LOAD_INFO` data Activity Monitor derives its CPU
+/// figures from. A single call costs microseconds and — unlike `top` — spawns
+/// no process and runs no sampling pass, so it doesn't pollute its own
+/// measurement window (which is what made `top` over-report `sys`).
+pub fn read_cpu_ticks() -> Option<CpuTicks> {
+    use std::mem::MaybeUninit;
+
+    let mut info = MaybeUninit::<libc::host_cpu_load_info>::uninit();
+    let mut count = libc::HOST_CPU_LOAD_INFO_COUNT;
+    let kr = unsafe {
+        libc::host_statistics(
+            mach2::mach_init::mach_host_self(),
+            libc::HOST_CPU_LOAD_INFO,
+            info.as_mut_ptr() as libc::host_info_t,
+            &mut count,
+        )
+    };
+    if kr != libc::KERN_SUCCESS {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    let ticks = &info.cpu_ticks;
+    let user = ticks[libc::CPU_STATE_USER as usize] as u64;
+    let sys = ticks[libc::CPU_STATE_SYSTEM as usize] as u64;
+    let nice = ticks[libc::CPU_STATE_NICE as usize] as u64;
+    let idle = ticks[libc::CPU_STATE_IDLE as usize] as u64;
+    let busy = user + sys + nice;
+    Some((busy, busy + idle))
+}
+
+/// Get current CPU and RAM usage.
+///
+/// CPU is measured as the delta between two `read_cpu_ticks()` snapshots. The
+/// caller passes the previous snapshot (from the last refresh) and receives the
+/// current one back, so the busy% is averaged over the whole refresh interval —
+/// matching how Activity Monitor's CPU graph reads. The first call (no `prev`)
+/// reports 0% and just returns the bootstrap snapshot.
+pub fn get_system_info(prev_cpu: Option<CpuTicks>) -> (SystemInfo, Option<CpuTicks>) {
     let mut info = SystemInfo::default();
 
-    // Get CPU usage using top command
-    if let Ok(output) = Command::new("top")
-        .args(["-l", "1", "-n", "0"])
-        .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            // Parse CPU usage line: "CPU usage: 5.71% user, 3.57% sys, 90.71% idle"
-            for line in stdout.lines() {
-                if line.starts_with("CPU usage:") {
-                    // Extract idle percentage and calculate usage
-                    if let Some(idle_part) = line.split(',').nth(2) {
-                        if let Some(idle_str) = idle_part.split('%').next() {
-                            if let Ok(idle) = idle_str.trim().parse::<f32>() {
-                                info.cpu_percentage = (100.0 - idle).round() as u8;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
+    // CPU usage from the tick-counter delta since the previous refresh.
+    let cur_cpu = read_cpu_ticks();
+    if let (Some((prev_busy, prev_total)), Some((cur_busy, cur_total))) = (prev_cpu, cur_cpu) {
+        let busy = cur_busy.saturating_sub(prev_busy);
+        let total = cur_total.saturating_sub(prev_total);
+        if total > 0 {
+            info.cpu_percentage = ((busy as f64 / total as f64) * 100.0).round() as u8;
         }
     }
 
-    // Get RAM usage using sysinfo crate (much more efficient and accurate)
-    let mut sys = System::new();
-    sys.refresh_memory();
-
-    let total_memory = sys.total_memory();
-    let used_memory = sys.used_memory();
-
-    if total_memory > 0 {
-        info.ram_percentage = ((used_memory as f64 / total_memory as f64) * 100.0).round() as u8;
-        info.ram_used_gb = (used_memory as f64 / 1_073_741_824.0) as f32;
-        info.ram_total_gb = (total_memory as f64 / 1_073_741_824.0) as f32;
+    // Get RAM usage the way Activity Monitor reports it.
+    //
+    // macOS keeps almost nothing truly free — inactive, speculative and
+    // purgeable pages are all reclaimable and are NOT counted as "used" by
+    // Activity Monitor. We derive Activity Monitor's "Memory Used" =
+    // App Memory + Wired + Compressed from the kernel's vm statistics:
+    //   used = (active + wired + compressor - purgeable) * page_size
+    let (used_bytes, total_bytes) = get_memory_used_total();
+    if total_bytes > 0 {
+        info.ram_percentage = ((used_bytes as f64 / total_bytes as f64) * 100.0).round() as u8;
+        info.ram_used_gb = (used_bytes as f64 / 1_073_741_824.0) as f32;
+        info.ram_total_gb = (total_bytes as f64 / 1_073_741_824.0) as f32;
     }
 
-    info
+    (info, cur_cpu)
+}
+
+/// Total physical memory in bytes, from `sysctlbyname("hw.memsize")`.
+/// This value is invariant for the life of the process.
+fn total_memory_bytes() -> u64 {
+    let mut value: u64 = 0;
+    let mut size = std::mem::size_of::<u64>();
+    let name = b"hw.memsize\0";
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr() as *const libc::c_char,
+            &mut value as *mut u64 as *mut libc::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc == 0 {
+        value
+    } else {
+        0
+    }
+}
+
+/// Compute (used_bytes, total_bytes) matching Activity Monitor's "Memory Used",
+/// reading the kernel's VM statistics directly via `host_statistics64` — no
+/// `vm_stat`/`sysctl` subprocess.
+fn get_memory_used_total() -> (u64, u64) {
+    use std::mem::MaybeUninit;
+
+    let total_bytes = total_memory_bytes();
+
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    let page_size = if page_size > 0 { page_size as u64 } else { 4096 };
+
+    let mut info = MaybeUninit::<libc::vm_statistics64>::uninit();
+    let mut count = libc::HOST_VM_INFO64_COUNT;
+    let kr = unsafe {
+        libc::host_statistics64(
+            mach2::mach_init::mach_host_self(),
+            libc::HOST_VM_INFO64,
+            info.as_mut_ptr() as libc::host_info64_t,
+            &mut count,
+        )
+    };
+    if kr != libc::KERN_SUCCESS {
+        return (0, total_bytes);
+    }
+    let vm = unsafe { info.assume_init() };
+
+    let used_pages = (vm.active_count as u64
+        + vm.wire_count as u64
+        + vm.compressor_page_count as u64)
+        .saturating_sub(vm.purgeable_count as u64);
+
+    (used_pages * page_size, total_bytes)
 }
 
 /// Microsoft Teams notification information

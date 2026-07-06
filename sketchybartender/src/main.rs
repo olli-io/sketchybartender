@@ -88,12 +88,14 @@ fn main() {
 
     let system_interval = config.system_interval;
     thread::spawn(move || {
-        // Initial refresh
-        handlers::handle_system_refresh();
-        
+        // Bootstrap the CPU tick counters so the first displayed value (one
+        // interval from now) is a real reading rather than 0%.
+        let mut prev_cpu = providers::read_cpu_ticks();
+        handlers::handle_system_refresh(&mut prev_cpu);
+
         loop {
             thread::sleep(Duration::from_secs(system_interval));
-            handlers::handle_system_refresh();
+            handlers::handle_system_refresh(&mut prev_cpu);
         }
     });
 
