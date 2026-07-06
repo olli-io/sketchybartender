@@ -36,6 +36,12 @@ pub struct Config {
     pub workspace_gradient_start: String,
     /// Workspace background gradient end color
     pub workspace_gradient_end: String,
+    /// Battery color when charging (default: 0xfffabd2f)
+    pub battery_charging_color: String,
+    /// Battery color when critically low (default: 0xfffb4934)
+    pub battery_low_color: String,
+    /// Battery color when discharging normally (default: 0xffF5EEE2)
+    pub battery_normal_color: String,
 }
 
 impl Default for Config {
@@ -55,6 +61,9 @@ impl Default for Config {
             workspace_gradient: true,
             workspace_gradient_start: "0xffbb60cd".to_string(),
             workspace_gradient_end: "0xffd8a657".to_string(),
+            battery_charging_color: "0xfffabd2f".to_string(),
+            battery_low_color: "0xfffb4934".to_string(),
+            battery_normal_color: "0xffF5EEE2".to_string(),
         }
     }
 }

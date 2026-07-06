@@ -213,9 +213,9 @@ pub fn handle_clock_refresh() {
     }
 }
 
-pub fn handle_battery_refresh(power_source: Option<String>) {
+pub fn handle_battery_refresh(power_source: Option<String>, config: &crate::config::Config) {
     if let Some(info) = providers::get_battery(power_source) {
-        if let Err(e) = update_battery(info.icon(), info.icon_color(), info.label_color(), info.percentage) {
+        if let Err(e) = update_battery(info.icon(), info.icon_color(config), info.label_color(config), info.percentage) {
             eprintln!("Failed to update battery: {}", e);
         }
     }

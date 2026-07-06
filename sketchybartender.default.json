@@ -12,5 +12,8 @@
   "border_active_color": "0xff8ec07c",
   "workspace_gradient": true,
   "workspace_gradient_start": "0xffbb60cd",
-  "workspace_gradient_end": "0xffd8a657"
+  "workspace_gradient_end": "0xffd8a657",
+  "battery_charging_color": "0xfffabd2f",
+  "battery_low_color": "0xfffb4934",
+  "battery_normal_color": "0xffF5EEE2"
 }

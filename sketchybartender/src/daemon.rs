@@ -52,11 +52,13 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
             Some("on-display-configuration-changed") => handle_workspace_refresh(&state),
             Some("on-power-source-changed") => {
                 let power_source = parts.get(1).map(|s| s.to_string());
-                handle_battery_refresh(power_source);
+                let config = state.lock().map(|s| s.config.clone()).unwrap_or_default();
+                handle_battery_refresh(power_source, &config);
             }
             Some("on-system-wake") => {
                 handle_workspace_refresh(&state);
-                handle_battery_refresh(None);
+                let config = state.lock().map(|s| s.config.clone()).unwrap_or_default();
+                handle_battery_refresh(None, &config);
                 handle_clock_refresh();
                 handle_teams_refresh();
             }

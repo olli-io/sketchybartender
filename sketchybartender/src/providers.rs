@@ -22,19 +22,19 @@ impl BatteryInfo {
         }
     }
 
-    /// Get the icon color based on charging state
-    pub fn icon_color(&self) -> &'static str {
+    /// Get the icon color based on charging state, using colors from config
+    pub fn icon_color<'a>(&self, config: &'a crate::config::Config) -> &'a str {
         if self.is_charging {
-            "0xfffabd2f" // Yellow when charging
+            &config.battery_charging_color // Charging
         } else if self.percentage <= 10 {
-            "0xfffb4934" // Red when battery is critically low
+            &config.battery_low_color // Critically low
         } else {
-            "0xffF5EEE2" // White when not charging
+            &config.battery_normal_color // Discharging normally
         }
     }
 
-    pub fn label_color(&self) -> &'static str {
-        self.icon_color()
+    pub fn label_color<'a>(&self, config: &'a crate::config::Config) -> &'a str {
+        self.icon_color(config)
     }
 }
 

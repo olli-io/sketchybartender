@@ -75,13 +75,14 @@ fn main() {
     });
 
     let battery_interval = config.battery_interval;
+    let battery_config = config.clone();
     thread::spawn(move || {
         // Initial refresh
-        handlers::handle_battery_refresh(None);
-        
+        handlers::handle_battery_refresh(None, &battery_config);
+
         loop {
             thread::sleep(Duration::from_secs(battery_interval));
-            handlers::handle_battery_refresh(None);
+            handlers::handle_battery_refresh(None, &battery_config);
         }
     });
 
