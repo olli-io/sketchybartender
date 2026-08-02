@@ -90,12 +90,21 @@ sketchybar --add item battery right \
            padding_left=8 \
            padding_right=0
 
-# System info showing RAM usage in GB
-sketchybar --add item sysinfo right \
-           --set sysinfo \
-           icon.drawing=off \
+# RAM usage in GB
+sketchybar --add item ram right \
+           --set ram \
            label.font="JetbrainsMono Nerd Font:Bold:13.0" \
            click_script="open -a 'Activity Monitor'" \
+           icon.drawing=off \
+           padding_left=8 \
+           padding_right=0
+
+# CPU usage in percent
+sketchybar --add item cpu right \
+           --set cpu \
+           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
+           click_script="open -a 'Activity Monitor'" \
+           icon.drawing=off \
            padding_left=8 \
            padding_right=0
 

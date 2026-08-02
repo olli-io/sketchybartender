@@ -191,20 +191,6 @@ pub struct SystemInfo {
     pub ram_total_gb: f32,
 }
 
-impl SystemInfo {
-    /// Get the CPU icon
-    #[allow(dead_code)]
-    pub fn cpu_icon(&self) -> &'static str {
-        "\u{f0ee0}" // nf-md-cpu_64_bit
-    }
-
-    /// Get the RAM icon
-    #[allow(dead_code)]
-    pub fn ram_icon(&self) -> &'static str {
-        "\u{f035b}" // nf-md-memory
-    }
-}
-
 /// A snapshot of cumulative CPU ticks since boot: (busy, total).
 /// `busy` = user + system + nice; `total` = busy + idle.
 pub type CpuTicks = (u64, u64);
