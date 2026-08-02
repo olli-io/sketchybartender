@@ -8,10 +8,10 @@ sleep 0.2
 
 # Start the daemon with full path and proper backgrounding
 nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
-nohup "/opt/homebrew/bin/miniserve ${HOME}/.config/html/vimium-landing.html" --port 8082 >/dev/null 2>&1 &
+nohup /opt/homebrew/bin/miniserve "${HOME}/.config/html/vimium-landing.html" --port 8082 >/dev/null 2>&1 &
 
 ##### Bar Appearance #####
-sketchybar --bar position=top height=33 blur_radius=0 color=0xff1d2021 margin=0 padding_left=10 padding_right=10
+sketchybar --bar position=top height=33 blur_radius=0 color=0xff1d2021 margin=0 padding_left=15 padding_right=10
 ##### Changing Defaults #####
 default=(
   icon.font="JetbrainsMono Nerd Font:Bold:15.0"
@@ -40,12 +40,13 @@ for workspace in {1..9} {a..z} ; do
         background.corner_radius=10 \
         background.height=22 \
         background.drawing=off \
-        icon.padding_left=5 \
+        icon.padding_left=0 \
         icon.padding_right=0 \
-        label.padding_left=2 \
-        label.padding_right=8 \
+        label.padding_left=1 \
+        label.padding_right=2 \
         label.y_offset=0 \
-        padding_right=3 \
+        padding_left=0 \
+        padding_right=11 \
         drawing=off \
         click_script="aerospace workspace $workspace"
     workspace_items+=("workspace.$workspace")
@@ -67,8 +68,8 @@ sketchybar --add item front_app left \
            label.font="JetbrainsMono Nerd Font:Bold:13.0" \
            label.color=0xffddc7a1 \
            icon.drawing=off \
-           padding_left=6 \
-           padding_right=15 \
+           padding_left=0 \
+           padding_right=8 \
            --subscribe front_app front_app_switched
 
 ##### Adding Right Items #####
@@ -76,13 +77,17 @@ sketchybar --add item front_app left \
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
 sketchybar --add item clock right \
            --set clock icon.drawing=off \
-           padding_left=5 \
+           click_script="open -a 'Calendar'" \
+           padding_left=8 \
            padding_right=0
 
 sketchybar --add item battery right \
            --subscribe battery power_source_change system_woke\
            --set battery script="$HOME/.local/bin/sketchycli on-power-source-changed \$INFO" \
-           padding_left=5 \
+           click_script="open 'x-apple.systempreferences:com.apple.Battery-Settings.extension'" \
+           icon.padding_left=0 \
+           icon.padding_right=2 \
+           padding_left=8 \
            padding_right=0
 
 # System info showing RAM usage in GB
@@ -90,12 +95,16 @@ sketchybar --add item sysinfo right \
            --set sysinfo \
            icon.drawing=off \
            label.font="JetbrainsMono Nerd Font:Bold:13.0" \
-           padding_left=5 \
+           click_script="open -a 'Activity Monitor'" \
+           padding_left=8 \
            padding_right=0
 
 sketchybar --add item brew right \
            --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked" \
-           padding_left=5 \
+           icon.font="JetbrainsMono Nerd Font:Bold:12.5" \
+           icon.padding_left=0 \
+           icon.padding_right=2 \
+           padding_left=8 \
            padding_right=0
 
 sketchybar --update
