@@ -133,7 +133,7 @@ impl BrewInfo {
 
     /// Get the appropriate icon
     pub fn icon(&self) -> &'static str {
-        "\u{f487}"
+        "\u{f130c}"
     }
 }
 
