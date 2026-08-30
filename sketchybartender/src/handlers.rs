@@ -153,6 +153,15 @@ fn update_front_app(icon: &str, app_name: &str) -> Result<(), std::io::Error> {
     ])
 }
 
+/// Update the weather item
+fn update_weather(icon: &str, temp: f32, wind: f32) -> Result<(), std::io::Error> {
+    set_item("weather", &[
+        ("icon", icon),
+        ("label", &format!("{:.1}° {:.1} m/s", temp, wind)),
+        ("drawing", "on"),
+    ])
+}
+
 /// Update the brew outdated item
 fn update_brew(icon: &str, formulae: usize, casks: usize) -> Result<(), std::io::Error> {
     let total = formulae + casks;
@@ -218,6 +227,16 @@ pub fn handle_battery_refresh(power_source: Option<String>, config: &crate::conf
     if let Some(info) = providers::get_battery(power_source) {
         if let Err(e) = update_battery(info.icon(), info.icon_color(config), info.label_color(config), info.percentage) {
             eprintln!("Failed to update battery: {}", e);
+        }
+    }
+}
+
+pub fn handle_weather_refresh() {
+    // Offline or FMI down: leave the previous reading on the bar rather than
+    // clearing it, matching the reference module's "keep last reading" behaviour.
+    if let Some(info) = providers::get_weather() {
+        if let Err(e) = update_weather(&info.icon, info.temp, info.wind) {
+            eprintln!("Failed to update weather: {}", e);
         }
     }
 }

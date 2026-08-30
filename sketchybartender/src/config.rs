@@ -5,6 +5,10 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+fn default_weather_interval() -> u64 {
+    600
+}
+
 /// Configuration for update intervals (in seconds)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -18,6 +22,9 @@ pub struct Config {
     pub teams_interval: u64,
     /// System (CPU/RAM) update interval (default: 5 seconds)
     pub system_interval: u64,
+    /// Weather update interval (default: 600 seconds / 10 minutes)
+    #[serde(default = "default_weather_interval")]
+    pub weather_interval: u64,
     /// Workspace background color (default: 0xfff38ba8)
     pub workspace_bg_color: String,
     /// Workspace focused label color (default: 0xff1d2021)
@@ -52,6 +59,7 @@ impl Default for Config {
             brew_interval: 3600,
             teams_interval: 30,
             system_interval: 5,
+            weather_interval: 600,
             workspace_bg_color: "0xffbb60cd".to_string(),
             workspace_focused_label_color: "0xff1d2021".to_string(),
             workspace_focused_icon_color: "0xff1d2021".to_string(),

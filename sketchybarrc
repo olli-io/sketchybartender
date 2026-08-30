@@ -67,6 +67,18 @@ sketchybar --add item front_app left \
 ##### Adding Right Items #####
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
+
+# Weather (FMI open data) — added before clock so it renders to the RIGHT of it,
+# since right items lay out right-to-left in order of addition.
+sketchybar --add item weather right \
+           --set weather \
+           icon.font="JetbrainsMono Nerd Font:Bold:15.0" \
+           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
+           icon.padding_left=0 \
+           icon.padding_right=4 \
+           padding_left=8 \
+           padding_right=0
+
 sketchybar --add item clock right \
            --set clock icon.drawing=off \
            click_script="open -a 'Calendar'" \

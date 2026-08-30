@@ -35,6 +35,18 @@ fn main() {
         }
     });
 
+    // Spawn weather refresh early too — it makes slow network calls to FMI.
+    let weather_interval = config.weather_interval;
+    thread::spawn(move || {
+        // Initial refresh
+        handlers::handle_weather_refresh();
+
+        loop {
+            thread::sleep(Duration::from_secs(weather_interval));
+            handlers::handle_weather_refresh();
+        }
+    });
+
     // Wait for sketchybar to be ready
     thread::sleep(Duration::from_millis(200));
 

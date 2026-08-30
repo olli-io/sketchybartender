@@ -1,6 +1,6 @@
 use std::process::Command;
 use std::thread;
-use chrono::Local;
+use chrono::{Local, Timelike, Utc};
 
 /// Battery information
 #[derive(Debug, Clone)]
@@ -116,6 +116,158 @@ pub fn get_clock() -> String {
     now.format("%d/%m %H:%M").to_string()
 }
 
+
+/// Current weather from FMI open data (OGC API-EDR, no API key).
+#[derive(Debug, Clone)]
+pub struct WeatherInfo {
+    /// Nerd Font glyph for the current sky condition.
+    pub icon: String,
+    /// Air temperature in °C.
+    pub temp: f32,
+    /// Wind speed in m/s.
+    pub wind: f32,
+}
+
+/// Longitude / latitude used for the position query (Turku).
+const WEATHER_LON: &str = "22.2666";
+const WEATHER_LAT: &str = "60.4518";
+
+/// Query FMI's EDR position endpoint for the newest non-null value of a
+/// parameter. Two collections are needed because neither has everything:
+///   `opendata`        — real measurements from the nearest station
+///   `pal_skandinavia` — FMI's edited forecast (the only weathersymbol3 source)
+///
+/// Returns the raw GeoJSON response as a string, or None on any failure.
+fn fmi_edr(collection: &str, parameter: &str, datetime: &str) -> Option<String> {
+    let coords = format!("coords=POINT({} {})", WEATHER_LON, WEATHER_LAT);
+    let url = format!(
+        "https://opendata.fmi.fi/edr/collections/{}/position",
+        collection
+    );
+    let output = Command::new("curl")
+        .args([
+            "-sS",
+            "-m",
+            "10",
+            "--get",
+            &url,
+            "--data-urlencode",
+            &coords,
+            "--data-urlencode",
+            &format!("parameter-name={}", parameter),
+            "--data-urlencode",
+            &format!("datetime={}", datetime),
+            "--data-urlencode",
+            "f=GeoJSON",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Extract the newest (by time) non-null value of `key` from an FMI GeoJSON
+/// blob using the same `jq` program as the reference waybar module.
+fn fmi_latest(geojson: &str, key: &str) -> Option<String> {
+    let program = r#"
+        [ .features[]? | .properties as $p | select($p[$k])
+          | range(0; $p.time|length) | select($p[$k][.] != null)
+          | {t: $p.time[.], v: $p[$k][.]} ]
+        | if length == 0 then "" else (max_by(.t) | .v | tostring) end"#;
+
+    let mut child = Command::new("jq")
+        .args(["-r", "--arg", "k", key, program])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+
+    use std::io::Write;
+    child
+        .stdin
+        .take()?
+        .write_all(geojson.as_bytes())
+        .ok()?;
+
+    let output = child.wait_with_output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+/// Map an FMI WeatherSymbol3 code to a Nerd Font glyph. Codes per FMI's
+/// download-service guide:
+///   1 clear  2 partly cloudy  3 overcast
+///   21/22/23 showers        31/32/33 rain
+///   41/42/43 snow showers   51/52/53 snowfall
+///   61/62 thundershowers    63/64 thunderstorm
+///   71/72/73 sleet showers  81/82/83 sleet
+///   91 mist                 92 fog
+/// `is_day` selects sun vs moon for the clear-sky code.
+fn weather_symbol_icon(sym: u32, is_day: bool) -> &'static str {
+    match sym {
+        1 => {
+            if is_day {
+                "\u{e30d}" // nf-weather-day_sunny
+            } else {
+                "\u{e32b}" // nf-weather-night_clear
+            }
+        }
+        2 => "\u{e302}",                       // partly cloudy
+        3 => "\u{e33d}",                       // overcast
+        21 | 22 | 23 => "\u{e319}",            // showers
+        31 | 32 | 33 => "\u{e318}",            // rain
+        41..=53 => "\u{e31a}",                 // snow (showers & snowfall)
+        61..=64 => "\u{e31d}",                 // thunder
+        71..=83 => "\u{e3ad}",                 // sleet
+        91 | 92 => "\u{e313}",                 // mist / fog
+        _ => "\u{e374}",                       // na
+    }
+}
+
+/// Fetch the current weather: real temperature/wind from the nearest station,
+/// sky icon from the forecast for the current hour. Returns None if the
+/// measurements are unavailable (offline, or FMI down).
+pub fn get_weather() -> Option<WeatherInfo> {
+    let now = Utc::now();
+    let end = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let start = (now - chrono::Duration::hours(1))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    // Measurements: temperature (ta_pt1m_avg) and wind (ws_pt10m_avg) over the
+    // last hour, taking the newest non-null reading of each.
+    let obs = fmi_edr("opendata", "ta_pt1m_avg,ws_pt10m_avg", &format!("{}/{}", start, end))?;
+    let temp: f32 = fmi_latest(&obs, "ta_pt1m_avg")?.parse().ok()?;
+    let wind: f32 = fmi_latest(&obs, "ws_pt10m_avg")?.parse().ok()?;
+
+    // Sky icon: the forecast's weathersymbol3 for the current hour. Optional —
+    // fall back to a neutral glyph if the forecast call fails.
+    let hour = now.format("%Y-%m-%dT%H:00:00Z").to_string();
+    let icon = fmi_edr("pal_skandinavia", "weathersymbol3", &format!("{}/{}", hour, hour))
+        .and_then(|g| fmi_latest(&g, "weathersymbol3"))
+        // The value can come back as a float like "3.0"; take the integer part.
+        .and_then(|s| s.split('.').next()?.parse::<u32>().ok())
+        .map(|sym| {
+            let local_hour = Local::now().hour();
+            let is_day = (7..21).contains(&local_hour);
+            weather_symbol_icon(sym, is_day)
+        })
+        .unwrap_or("\u{e374}")
+        .to_string();
+
+    Some(WeatherInfo { icon, temp, wind })
+}
 
 /// Brew outdated information
 #[derive(Debug, Clone, Default)]
@@ -407,26 +559,28 @@ mod tests {
 
     #[test]
     fn test_battery_icons() {
-        let high = BatteryInfo { percentage: 95, is_charging: false };
-        assert_eq!(high.icon(), "󱊣");
+        // The battery glyph reflects the charge level only; charging state is
+        // conveyed through icon_color, not icon().
+        let full = BatteryInfo { percentage: 95, is_charging: false };
+        assert_eq!(full.icon(), "\u{f240}"); // nf-fa-battery_full
 
-        let is_charging = BatteryInfo { percentage: 50, is_charging: true };
-        assert_eq!(is_charging.icon(), "\u{f0e7}"); // nf-fa-bolt
+        let mid = BatteryInfo { percentage: 50, is_charging: true };
+        assert_eq!(mid.icon(), "\u{f242}"); // nf-fa-battery_half
 
-        let low = BatteryInfo { percentage: 5, is_charging: false };
-        assert_eq!(low.icon(), "󰂎");
+        let empty = BatteryInfo { percentage: 5, is_charging: false };
+        assert_eq!(empty.icon(), "\u{f244}"); // nf-fa-battery_empty
     }
 
     #[test]
     fn test_volume_icons() {
         let high = VolumeInfo { percentage: 80, muted: false };
-        assert_eq!(high.icon(), "\u{f240}");
+        assert_eq!(high.icon(), "\u{f057e}"); // nf-md-volume_high
 
         let muted = VolumeInfo { percentage: 80, muted: true };
-        assert_eq!(muted.icon(), "󰖁");
+        assert_eq!(muted.icon(), "\u{f0581}"); // nf-md-volume_off
 
         let zero = VolumeInfo { percentage: 0, muted: false };
-        assert_eq!(zero.icon(), "\u{f244}");
+        assert_eq!(zero.icon(), "\u{f0581}"); // 0% renders as muted
     }
 
     #[test]
