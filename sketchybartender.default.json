@@ -5,16 +5,16 @@
   "teams_interval": 30,
   "system_interval": 5,
   "weather_interval": 600,
-  "workspace_bg_color": "0xff1d2021",
+  "workspace_bg_color": "0xffd8a657",
   "workspace_focused_label_color": "0xffd8a657",
   "workspace_focused_icon_color": "0xffddc7a1",
   "workspace_unfocused_label_color": "0xffddc7a1",
   "workspace_unfocused_icon_color": "0xffbdae93",
   "border_active_color": "0xffa9b665",
   "workspace_gradient": false,
-  "workspace_gradient_start": "0xff1d2021",
+  "workspace_gradient_start": "0xffd8a657",
   "workspace_gradient_end": "0xffd8a657",
   "battery_charging_color": "0xfffabd2f",
   "battery_low_color": "0xfffb4934",
-  "battery_normal_color": "0xff7c6f64"
+  "battery_normal_color": "0xffddc7a1"
 }
