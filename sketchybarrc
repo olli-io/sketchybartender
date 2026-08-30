@@ -11,7 +11,7 @@ nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
 nohup /opt/homebrew/bin/miniserve "${HOME}/.config/html/vimium-landing.html" --port 8082 >/dev/null 2>&1 &
 
 ##### Bar Appearance #####
-sketchybar --bar position=top height=33 blur_radius=0 color=0xff1d2021 margin=0 padding_left=15 padding_right=10
+sketchybar --bar position=top height=33 blur_radius=0 color=0xff282828 margin=0 padding_left=15 padding_right=10
 ##### Changing Defaults #####
 default=(
   icon.font="JetbrainsMono Nerd Font:Bold:15.0"
