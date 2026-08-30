@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::process::Command;
 use serde::Deserialize;
+use crate::aerospace_socket;
 use crate::icon_map::get_icon;
 
 /// Information about a single window from aerospace
@@ -33,26 +33,19 @@ pub struct WorkspaceInfo {
 /// Get all windows using aerospace's JSON API
 /// This single command provides all the information we need about windows, workspaces, and displays
 pub fn get_windows() -> Vec<WindowInfo> {
-    let output = match Command::new("aerospace")
-        .args([
-            "list-windows",
-            "--all",
-            "--format",
-            "%{app-name}%{workspace}%{workspace-is-focused}%{workspace-is-visible}%{monitor-appkit-nsscreen-screens-id}",
-            "--json"
-        ])
-        .output()
-    {
-        Ok(o) => o,
+    let stdout = match aerospace_socket::run(&[
+        "list-windows",
+        "--all",
+        "--format",
+        "%{app-name}%{workspace}%{workspace-is-focused}%{workspace-is-visible}%{monitor-appkit-nsscreen-screens-id}",
+        "--json",
+    ]) {
+        Ok(s) => s,
         Err(_) => return Vec::new(),
     };
 
-    if !output.status.success() {
-        return Vec::new();
-    }
-
     // Parse JSON using serde
-    serde_json::from_slice(&output.stdout).unwrap_or_default()
+    serde_json::from_str(&stdout).unwrap_or_default()
 }
 
 
@@ -72,23 +65,17 @@ pub struct FocusedWorkspaceInfo {
 /// Get the currently focused workspace
 /// This is used as a fallback when no windows are open in the focused workspace
 pub fn get_focused_workspace() -> Option<FocusedWorkspaceInfo> {
-    let output = Command::new("aerospace")
-        .args([
-            "list-workspaces",
-            "--focused",
-            "--format",
-            "%{workspace}%{workspace-is-focused}%{workspace-is-visible}%{monitor-appkit-nsscreen-screens-id}",
-            "--json"
-        ])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
+    let stdout = aerospace_socket::run(&[
+        "list-workspaces",
+        "--focused",
+        "--format",
+        "%{workspace}%{workspace-is-focused}%{workspace-is-visible}%{monitor-appkit-nsscreen-screens-id}",
+        "--json",
+    ])
+    .ok()?;
 
     // Parse JSON - returns an array with a single element
-    let workspaces: Vec<FocusedWorkspaceInfo> = serde_json::from_slice(&output.stdout).ok()?;
+    let workspaces: Vec<FocusedWorkspaceInfo> = serde_json::from_str(&stdout).ok()?;
     workspaces.into_iter().next()
 }
 

@@ -1,5 +1,7 @@
 mod aerospace;
+mod aerospace_events;
 mod aerospace_focus;
+mod aerospace_socket;
 mod config;
 mod daemon;
 mod handlers;
@@ -36,12 +38,11 @@ fn main() {
     // Wait for sketchybar to be ready
     thread::sleep(Duration::from_millis(200));
 
-    // Spawn refresh thread for workspace (event-driven, but needs initial refresh)
-    let workspace_state = Arc::clone(&state);
-    thread::spawn(move || {
-        // Initial refresh
-        handlers::handle_workspace_refresh(&workspace_state);
-    });
+    // Subscribe directly to AeroSpace's event stream. This drives workspace and
+    // focus updates without going through a sketchybar listener item + sketchycli.
+    // The subscription requests the initial state on connect, so it also performs
+    // the first paint.
+    aerospace_events::spawn(Arc::clone(&state));
 
     // Spawn timer threads for periodic updates using configured intervals
     // Smart clock refresh: poll every 2 seconds until minute changes, then switch to 1-minute intervals

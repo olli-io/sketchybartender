@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::aerospace;
 use crate::aerospace_focus;
+use crate::aerospace_socket;
 use crate::icon_map;
 use crate::mach_client;
 use crate::providers;
@@ -366,17 +367,7 @@ pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>
         Some(name) => name,
         None => {
             // Fallback: query aerospace for the focused window
-            Command::new("aerospace")
-                .args(["list-windows", "--focused", "--format", "%{app-name}"])
-                .output()
-                .ok()
-                .and_then(|output| {
-                    if output.status.success() {
-                        String::from_utf8(output.stdout).ok()
-                    } else {
-                        None
-                    }
-                })
+            aerospace_socket::run(&["list-windows", "--focused", "--format", "%{app-name}"])
                 .map(|s| s.trim().to_string())
                 .unwrap_or_default()
         }
@@ -539,10 +530,15 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         ];
 
         if is_focused {
-            // Use gradient color based on position in bar (0-indexed)
+            // Render the focused workspace as a thin bottom underline rather
+            // than a full background fill: a short background strip pushed to
+            // the bottom of the item. The square corners come from the item's
+            // static background.corner_radius=0 in sketchybarrc.
             let ws_index = position % gradient_colors.len();
             let bg_color = &gradient_colors[ws_index];
             settings.push(("background.color", bg_color.to_string()));
+            settings.push(("background.height", "2".to_string()));
+            settings.push(("background.y_offset", "-15".to_string()));
         }
 
         let settings_refs: Vec<(&str, &str)> = settings

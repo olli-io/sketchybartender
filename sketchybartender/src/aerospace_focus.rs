@@ -20,6 +20,8 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
+use crate::aerospace_socket;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct WorkspaceConfig {
@@ -84,12 +86,8 @@ pub fn load_config() -> AerospaceFocusConfig {
 
 /// Run `aerospace workspace <workspace>`
 pub fn aerospace_focus(workspace: &str) -> bool {
-    let status = Command::new("aerospace")
-        .args(["workspace", workspace])
-        .status();
-
-    match status {
-        Ok(s) => s.success(),
+    match aerospace_socket::run(&["workspace", workspace]) {
+        Ok(_) => true,
         Err(e) => {
             eprintln!("[aerospace-focus] Failed to run aerospace workspace: {}", e);
             false
@@ -99,31 +97,20 @@ pub fn aerospace_focus(workspace: &str) -> bool {
 
 /// Return the list of app-bundle-ids currently open in the workspace
 pub fn list_workspace_bundle_ids(workspace: &str) -> Vec<String> {
-    let output = Command::new("aerospace")
-        .args([
-            "list-windows",
-            "--workspace",
-            workspace,
-            "--format",
-            "%{app-bundle-id}",
-        ])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+    match aerospace_socket::run(&[
+        "list-windows",
+        "--workspace",
+        workspace,
+        "--format",
+        "%{app-bundle-id}",
+    ]) {
+        Ok(stdout) => stdout
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect(),
-        Ok(o) => {
-            eprintln!(
-                "[aerospace-focus] aerospace list-windows failed: {}",
-                String::from_utf8_lossy(&o.stderr)
-            );
-            Vec::new()
-        }
         Err(e) => {
-            eprintln!("[aerospace-focus] Failed to run aerospace list-windows: {}", e);
+            eprintln!("[aerospace-focus] aerospace list-windows failed: {}", e);
             Vec::new()
         }
     }
