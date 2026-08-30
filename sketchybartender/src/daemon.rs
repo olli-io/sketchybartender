@@ -40,7 +40,9 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
                 let app_name = parts.get(1).map(|s| s.to_string());
                 handle_focus_refresh(app_name, &state);
             }
-            Some("on-workspace-changed") => handle_workspace_refresh(&state),
+            Some("on-workspace-changed") => {
+                handle_workspace_refresh(&state);
+            }
             Some("on-aerospace-focus") => {
                 if let Some(workspace) = parts.get(1).map(|s| s.to_string()) {
                     handle_aerospace_focus(workspace, &state);
@@ -49,7 +51,9 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
             Some("on-brew-clicked") => handle_brew_upgrade(),
             Some("on-teams-clicked") => handle_teams_clicked(),
             Some("trigger-teams-refresh") => handle_teams_refresh(),
-            Some("on-display-configuration-changed") => handle_workspace_refresh(&state),
+            Some("on-display-configuration-changed") => {
+                handle_workspace_refresh(&state);
+            }
             Some("on-power-source-changed") => {
                 let power_source = parts.get(1).map(|s| s.to_string());
                 let config = state.lock().map(|s| s.config.clone()).unwrap_or_default();

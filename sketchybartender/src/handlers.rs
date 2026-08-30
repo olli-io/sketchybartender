@@ -201,6 +201,9 @@ pub struct DaemonState {
     pub last_workspace_change: Option<Instant>,
     /// Previously rendered workspaces (to detect which ones need clearing)
     pub previous_workspaces: HashSet<String>,
+    /// Signature of the window set as of the last workspace repaint. AeroSpace
+    /// emits no window-closed event, so this is what closures are detected by.
+    pub last_window_signature: Option<String>,
     /// Configuration
     pub config: crate::config::Config,
 }
@@ -211,6 +214,7 @@ impl DaemonState {
             front_app: String::new(),
             last_workspace_change: None,
             previous_workspaces: HashSet::new(),
+            last_window_signature: None,
             config,
         }
     }
@@ -426,7 +430,10 @@ fn format_workspace_label(ws_id: &str, has_icon: bool) -> String {
     }
 }
 
-pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
+/// Repaint every workspace item. Returns whether a repaint actually happened:
+/// `false` means the call was debounced or the state lock was poisoned, so the
+/// bar may still be showing something older than what AeroSpace reports.
+pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
     // Debounce: Check if enough time has passed since the last workspace change
     let now = Instant::now();
     let should_process = if let Ok(mut s) = state.lock() {
@@ -442,11 +449,11 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
             true
         }
     } else {
-        return;
+        return false;
     };
 
     if !should_process {
-        return; // Event was debounced
+        return false; // Event was debounced
     }
 
     // Small delay to let aerospace settle its internal state
@@ -481,7 +488,7 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
         s.previous_workspaces = current_workspaces.clone();
         (prev, cfg)
     } else {
-        return;
+        return false;
     };
 
     // Generate gradient colors from border_active_color (10 steps)
@@ -584,6 +591,8 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) {
     {
         eprintln!("Failed to update borders color: {}", e);
     }
+
+    true
 }
 
 /// Focus a workspace via aerospace and launch its configured app if not already running.

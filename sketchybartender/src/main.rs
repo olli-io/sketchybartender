@@ -8,6 +8,7 @@ mod handlers;
 mod icon_map;
 mod mach_client;
 mod providers;
+mod window_events;
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -54,7 +55,7 @@ fn main() {
     // focus updates without going through a sketchybar listener item + sketchycli.
     // The subscription requests the initial state on connect, so it also performs
     // the first paint.
-    aerospace_events::spawn(Arc::clone(&state));
+    let window_nudge = aerospace_events::spawn(Arc::clone(&state));
 
     // Spawn timer threads for periodic updates using configured intervals
     // Smart clock refresh: poll every 2 seconds until minute changes, then switch to 1-minute intervals
@@ -112,6 +113,13 @@ fn main() {
         }
     });
 
-    // Start the daemon socket listener
-    daemon::start_daemon(state);
+    // Start the daemon socket listener on its own thread: the main thread is
+    // needed for the WindowServer event loop below.
+    let daemon_state = Arc::clone(&state);
+    thread::spawn(move || daemon::start_daemon(daemon_state));
+
+    // Takes over the main thread and never returns. AeroSpace never reports a
+    // closed window, so we get that from the WindowServer directly; each
+    // notification nudges the window-set watcher to repaint.
+    window_events::run(window_nudge);
 }
