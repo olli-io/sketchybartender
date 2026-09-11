@@ -68,17 +68,6 @@ sketchybar --add item front_app left \
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
 
-# Weather (FMI open data) — added before clock so it renders to the RIGHT of it,
-# since right items lay out right-to-left in order of addition.
-sketchybar --add item weather right \
-           --set weather \
-           icon.font="JetbrainsMono Nerd Font:Bold:15.0" \
-           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
-           icon.padding_left=0 \
-           icon.padding_right=4 \
-           padding_left=8 \
-           padding_right=0
-
 sketchybar --add item clock right \
            --set clock icon.drawing=off \
            click_script="open -a 'Calendar'" \
@@ -113,10 +102,22 @@ sketchybar --add item cpu right \
            padding_right=0
 
 sketchybar --add item brew right \
-           --set brew click_script="$HOME/.local/bin/sketchycli on-brew-clicked" \
+           --set brew click_script="open -na kitty --args --hold brew upgrade" \
            icon.font="JetbrainsMono Nerd Font:Bold:12.5" \
            icon.padding_left=0 \
            icon.padding_right=2 \
+           padding_left=8 \
+           padding_right=0
+
+# Weather (FMI open data) — added after brew so it renders to the LEFT of it,
+# since right items lay out right-to-left in order of addition.
+sketchybar --add item weather right \
+           --set weather \
+           click_script="open -na kitty --args $HOME/.local/bin/forecastui" \
+           icon.font="JetbrainsMono Nerd Font:Bold:15.0" \
+           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
+           icon.padding_left=0 \
+           icon.padding_right=4 \
            padding_left=8 \
            padding_right=0
 
