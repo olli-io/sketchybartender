@@ -26,9 +26,11 @@ default=(
 )
 sketchybar --default "${default[@]}"
 
-##### Adding AeroSpace Workspace Indicator #####
-# Workspace updates are now handled directly by aerospace → sketchybartender
-# No need for sketchybar event subscriptions
+##### Adding Workspace Indicator #####
+# Workspace updates come directly from the window manager (AeroSpace or Rift,
+# from "window_manager" in sketchybartender.json) → sketchybartender.
+# No need for sketchybar event subscriptions. A click focuses the workspace
+# through the same window manager.
 
 # Add workspace items for lettered workspaces (no subscriptions, updated by workspace_manager)
 workspace_items=()
@@ -48,13 +50,13 @@ for workspace in {1..9} {a..z} ; do
         padding_left=0 \
         padding_right=11 \
         drawing=off \
-        click_script="aerospace workspace $workspace"
+        click_script="$HOME/.local/bin/sketchycli focus-workspace $workspace"
     workspace_items+=("workspace.$workspace")
 done
 
 ##### Adding Left Items #####
 # Workspace and focus (front_app) updates are driven by the sketchybartender
-# daemon subscribing directly to AeroSpace's event stream — no sketchybar event
+# daemon subscribing directly to the window manager's event stream — no sketchybar event
 # listeners or sketchycli hops needed.
 sketchybar --add item front_app left \
            --set front_app \

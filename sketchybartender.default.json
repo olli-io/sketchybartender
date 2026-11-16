@@ -1,4 +1,5 @@
 {
+  "window_manager": "aerospace",
   "clock_interval": 15,
   "battery_interval": 120,
   "brew_interval": 3600,

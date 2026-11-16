@@ -1,5 +1,7 @@
 //! Workspace focus helper: substitute for `aerospace focus <workspace>` that
-//! also ensures the configured app is running in the workspace.
+//! also ensures the configured app is running in the workspace. It works with
+//! each window manager that `wm` supports; the config path keeps its AeroSpace
+//! name for compatibility. With Rift, the keys are workspace numbers ("1", "2", ...).
 //!
 //! Config file: $XDG_CONFIG_HOME/aerospace/aerospace-workspaces.json
 //!              (or ~/.config/aerospace/aerospace-workspaces.json)
@@ -20,7 +22,8 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-use crate::aerospace_socket;
+use crate::config::WindowManager;
+use crate::wm;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -84,49 +87,17 @@ pub fn load_config() -> AerospaceFocusConfig {
     }
 }
 
-/// Run `aerospace workspace <workspace>`
-pub fn aerospace_focus(workspace: &str) -> bool {
-    match aerospace_socket::run(&["workspace", workspace]) {
-        Ok(_) => true,
-        Err(e) => {
-            eprintln!("[aerospace-focus] Failed to run aerospace workspace: {}", e);
-            false
-        }
-    }
-}
-
-/// Return the list of app-bundle-ids currently open in the workspace
-pub fn list_workspace_bundle_ids(workspace: &str) -> Vec<String> {
-    match aerospace_socket::run(&[
-        "list-windows",
-        "--workspace",
-        workspace,
-        "--format",
-        "%{app-bundle-id}",
-    ]) {
-        Ok(stdout) => stdout
-            .lines()
-            .map(|l| l.trim().to_string())
-            .filter(|l| !l.is_empty())
-            .collect(),
-        Err(e) => {
-            eprintln!("[aerospace-focus] aerospace list-windows failed: {}", e);
-            Vec::new()
-        }
-    }
-}
-
 /// Launch the configured app for `workspace` if it isn't already running there.
-/// Does NOT call `aerospace workspace` — use this when aerospace has already
+/// Does NOT focus the workspace — use this when the window manager has already
 /// performed the focus (e.g. from an exec-on-workspace-change callback).
-pub fn ensure_workspace_app(workspace: &str) {
+pub fn ensure_workspace_app(wm: WindowManager, workspace: &str) {
     let config = load_config();
     let apps = match config.get(workspace) {
         Some(c) => c,
         None => return,
     };
 
-    let bundle_ids = list_workspace_bundle_ids(workspace);
+    let bundle_ids = wm::workspace_bundle_ids(wm, workspace);
 
     for app in apps {
         let app_running = bundle_ids
@@ -158,12 +129,12 @@ pub fn ensure_workspace_app(workspace: &str) {
 }
 
 /// Focus the workspace and launch the configured app if it isn't already running there.
-pub fn focus_workspace(workspace: &str) {
-    if !aerospace_focus(workspace) {
+pub fn focus_workspace(wm: WindowManager, workspace: &str) {
+    if !wm::focus_workspace(wm, workspace) {
         eprintln!(
-            "[aerospace-focus] Warning: aerospace workspace returned non-zero for '{}'",
+            "[aerospace-focus] Warning: focusing workspace '{}' failed",
             workspace
         );
     }
-    ensure_workspace_app(workspace);
+    ensure_workspace_app(wm, workspace);
 }

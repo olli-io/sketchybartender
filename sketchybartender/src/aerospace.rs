@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use crate::aerospace_socket;
-use crate::icon_map::get_icon;
+use crate::wm::WorkspaceInfo;
 
 /// Information about a single window from aerospace
 #[derive(Debug, Clone, Deserialize)]
@@ -14,19 +14,6 @@ pub struct WindowInfo {
     pub workspace_is_visible: bool,
     /// Sketchybar display ID (monitor-appkit-nsscreen-screens-id from aerospace)
     #[serde(rename = "monitor-appkit-nsscreen-screens-id")]
-    pub display_id: u32,
-}
-
-/// Information about a workspace
-#[derive(Debug, Clone, Default)]
-pub struct WorkspaceInfo {
-    #[allow(dead_code)] // Used in tests
-    pub id: String,
-    pub apps: Vec<String>,
-    pub icons: String,
-    #[allow(dead_code)] // Used in tests
-    pub is_focused: bool,
-    /// Sketchybar display ID (directly from aerospace's monitor-appkit-nsscreen-screens-id)
     pub display_id: u32,
 }
 
@@ -152,41 +139,13 @@ pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceI
         }
     }
 
-    // Build workspace infos
-    let mut result = HashMap::new();
-
-    for (ws_id, (apps, is_focused, display_id)) in workspace_data {
-        // Build icons string
-        let icons: String = if show_all_windows {
-            // Show an icon for each window
-            apps
-                .iter()
-                .map(|app| format!("{}", get_icon(app)))
-                .collect()
-        } else {
-            // Show one icon per unique app
-            let mut unique_apps: Vec<String> = apps.clone();
-            unique_apps.sort();
-            unique_apps.dedup();
-            unique_apps
-                .iter()
-                .map(|app| format!("{}", get_icon(app)))
-                .collect()
-        };
-
-        result.insert(
-            ws_id.clone(),
-            WorkspaceInfo {
-                id: ws_id.clone(),
-                apps,
-                icons: icons.trim_end().to_string(),
-                is_focused,
-                display_id,
-            },
-        );
-    }
-
-    result
+    workspace_data
+        .into_iter()
+        .map(|(ws_id, (apps, is_focused, display_id))| {
+            let info = WorkspaceInfo::new(ws_id.clone(), apps, is_focused, display_id, show_all_windows);
+            (ws_id, info)
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -12,31 +12,18 @@
 //!
 //! Note what is *missing* from that list: there is no window-closed event. A
 //! window disappearing is only ever observable as a change in `list-windows`,
-//! which is why this module also watches the window set (see `window_signature`).
-//! Before the socket migration this was covered by sketchybar's built-in
-//! `space_windows_change` event driving a `sketchycli on-workspace-changed` hop.
-//!
-//! The prompt signal for a closure comes from the WindowServer instead — see
-//! `crate::window_events`, which nudges the watcher spawned here. The periodic
-//! poll stays as a fallback for whenever that private API stops delivering.
+//! which is why the shared watcher in `crate::window_watch` compares the window
+//! set (see `window_signature`). The prompt signal for a closure comes from the
+//! WindowServer — see `crate::window_events`, which nudges that watcher.
 
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use crate::aerospace_socket::{self, Subscription};
-use crate::handlers::{handle_focus_refresh, handle_workspace_refresh, DaemonState};
-
-/// How often to re-check the window set for closures that produce no event at
-/// all — a background app quitting, or a window closing in a workspace other
-/// than the focused one.
-const WINDOW_POLL_INTERVAL: Duration = Duration::from_secs(2);
-
-/// How long to wait after a nudge before sampling the window set. Both nudge
-/// sources fire while the closing window is still in `list-windows` — AeroSpace
-/// only drops it ~75ms later — so sampling immediately would see no change.
-const NUDGE_SETTLE: Duration = Duration::from_millis(150);
+use crate::handlers::{handle_focus_refresh, DaemonState};
+use crate::window_watch::{self, refresh_workspaces};
 
 /// Spawn the background threads that keep the bar in sync with AeroSpace: one
 /// subscribed to the event stream, one watching the window set as a safety net
@@ -46,11 +33,9 @@ const NUDGE_SETTLE: Duration = Duration::from_millis(150);
 /// that learns of a window appearing or disappearing can nudge it; the watcher
 /// only repaints when the window set actually differs.
 pub fn spawn(state: Arc<Mutex<DaemonState>>) -> Sender<()> {
-    let (nudge_tx, nudge_rx) = mpsc::channel();
-    let poll_state = Arc::clone(&state);
+    let nudge_tx = window_watch::spawn(Arc::clone(&state));
     let event_nudge = nudge_tx.clone();
     thread::spawn(move || run_loop(state, event_nudge));
-    thread::spawn(move || poll_loop(poll_state, nudge_rx));
     nudge_tx
 }
 
@@ -89,23 +74,6 @@ fn run_loop(state: Arc<Mutex<DaemonState>>, nudge_tx: Sender<()>) {
     }
 }
 
-/// Repaint the workspace items whenever the window set changes without an event
-/// to announce it. Wakes on a nudge from the event thread, or on its own every
-/// `WINDOW_POLL_INTERVAL` for changes that produce no event at all.
-///
-/// The sampling runs here rather than on the event thread so that waiting for
-/// AeroSpace to settle never stalls event dispatch.
-fn poll_loop(state: Arc<Mutex<DaemonState>>, nudge_rx: Receiver<()>) {
-    loop {
-        if nudge_rx.recv_timeout(WINDOW_POLL_INTERVAL).is_ok() {
-            // Collapse a burst of nudges into one sample.
-            while nudge_rx.try_recv().is_ok() {}
-            thread::sleep(NUDGE_SETTLE);
-        }
-        refresh_if_windows_changed(&state);
-    }
-}
-
 /// Route a single event to the appropriate handler based on its `_event` field.
 fn dispatch(event: &serde_json::Value, state: &Arc<Mutex<DaemonState>>, nudge_tx: &Sender<()>) {
     let kind = event.get("_event").and_then(|v| v.as_str()).unwrap_or("");
@@ -136,7 +104,7 @@ fn dispatch(event: &serde_json::Value, state: &Arc<Mutex<DaemonState>>, nudge_tx
 /// A cheap fingerprint of every window AeroSpace knows about and the workspace
 /// it lives on. Lines are sorted so a reordering of AeroSpace's window tree
 /// doesn't read as a change.
-fn window_signature() -> Option<String> {
+pub fn window_signature() -> Option<String> {
     let stdout = aerospace_socket::run(&[
         "list-windows",
         "--all",
@@ -148,40 +116,4 @@ fn window_signature() -> Option<String> {
     let mut lines: Vec<&str> = stdout.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
     lines.sort_unstable();
     Some(lines.join("\n"))
-}
-
-/// Repaint the workspace items and record the window set they were painted from.
-fn refresh_workspaces(state: &Arc<Mutex<DaemonState>>) {
-    if !handle_workspace_refresh(state) {
-        // Debounced — the bar still shows the old window set, so leave the
-        // recorded signature stale and let the poll pick the change back up.
-        return;
-    }
-
-    // Sample the signature *after* the repaint so the poll doesn't immediately
-    // redo the same work.
-    let signature = window_signature();
-    if let Ok(mut s) = state.lock() {
-        s.last_window_signature = signature;
-    }
-}
-
-/// Repaint only if the window set differs from the one the bar currently shows.
-fn refresh_if_windows_changed(state: &Arc<Mutex<DaemonState>>) {
-    let signature = match window_signature() {
-        Some(sig) => sig,
-        // AeroSpace unreachable — leave the last known signature in place so we
-        // repaint once it comes back rather than on the failure itself.
-        None => return,
-    };
-
-    let unchanged = match state.lock() {
-        Ok(s) => s.last_window_signature.as_deref() == Some(signature.as_str()),
-        Err(_) => return,
-    };
-
-    // Must be outside the lock: handle_workspace_refresh locks the state itself.
-    if !unchanged {
-        refresh_workspaces(state);
-    }
 }

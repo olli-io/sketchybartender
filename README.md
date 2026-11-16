@@ -3,7 +3,9 @@
 Helper daemon and cli script to run my sketchybar setup (WIP).
 
 1. Sketchybartender (rust) handles updating all information in sketchybar.
-2. Sketchycli (rust) passes on cli commands to sketchybartender, when triggered by aerospace (window manager) or sketchybar.
+2. Sketchycli (rust) passes on cli commands to sketchybartender, when triggered by sketchybar.
+
+Supported window managers: [AeroSpace](https://github.com/nikitabobko/AeroSpace) (default) and [Rift](https://github.com/acsandmann/rift).
 
 ## Installation
 
@@ -17,8 +19,14 @@ brew install rust
 brew install FelixKratz/formulae/sketchybar
 ```
 
+Install one window manager:
+
 ```bash
 brew install --cask nikitabobko/tap/aerospace
+```
+
+```bash
+brew install acsandmann/tap/rift
 ```
 
 ### 2. Install sketchybartender
@@ -36,20 +44,29 @@ This will:
 - Copy configuration files to `~/.config/sketchybar/`
 - Backup your existing sketchybarrc if present
 
-At this point the sketchybar may be a bit empty. Add the following to aerospace.toml and run `aerospace reload-config`
+### 3. Select the window manager
 
-```
-exec-on-workspace-change = [
-    '/bin/bash', '-c',
-    'sketchycli on-workspace-changed'
-]
+Set `window_manager` in `~/.config/sketchybar/sketchybartender.json` and restart sketchybar (`sketchybar --reload`):
 
-on-focus-changed = [
-    'exec-and-forget sketchycli on-focus-changed'
-]
+```json
+{
+  "window_manager": "rift"
+}
 ```
 
-### 3. Ensure PATH is Set
+| Value | Connection |
+| --- | --- |
+| `"aerospace"` (default) | AeroSpace Unix socket (`/tmp/bobko.aerospace-$USER.sock`) |
+| `"rift"` | Rift Mach IPC service (`git.acsandmann.rift`, or `$RIFT_BS_NAME`) |
+
+The daemon subscribes to the window manager's events directly. You do not need callbacks in `aerospace.toml` or `rift-cli subscribe` entries.
+
+Rift notes:
+
+- The bar shows Rift workspaces by number (`[1]`, `[2]`, ...), with the 1-based workspace index. A click on an item switches to that workspace.
+- In Rift's `per_display` mode, each display has a workspace "1". Sketchybar can show an item on one display only, so the bar shows the focused display's workspace. Use `global` mode to see all workspaces on a multi-display setup.
+
+### 4. Ensure PATH is Set
 
 Make sure `~/.local/bin` is in your PATH. Add this to your shell config if needed:
 

@@ -14,6 +14,7 @@ use crate::handlers::{
     handle_brew_upgrade,
     handle_clock_refresh,
     handle_focus_refresh,
+    handle_focus_workspace,
     handle_system_refresh,
     handle_teams_clicked,
     handle_teams_refresh,
@@ -46,6 +47,11 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
             Some("on-aerospace-focus") => {
                 if let Some(workspace) = parts.get(1).map(|s| s.to_string()) {
                     handle_aerospace_focus(workspace, &state);
+                }
+            }
+            Some("focus-workspace") => {
+                if let Some(workspace) = parts.get(1).map(|s| s.trim().to_string()) {
+                    handle_focus_workspace(workspace, &state);
                 }
             }
             Some("on-brew-clicked") => handle_brew_upgrade(),

@@ -9,9 +9,23 @@ fn default_weather_interval() -> u64 {
     600
 }
 
+/// The window manager that supplies workspace and focus data.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WindowManager {
+    /// AeroSpace, through its Unix socket.
+    #[default]
+    Aerospace,
+    /// Rift, through its Mach IPC service.
+    Rift,
+}
+
 /// Configuration for update intervals (in seconds)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// Window manager integration: "aerospace" (default) or "rift"
+    #[serde(default)]
+    pub window_manager: WindowManager,
     /// Clock update interval (default: 15 seconds)
     pub clock_interval: u64,
     /// Battery update interval (default: 120 seconds)
@@ -54,6 +68,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            window_manager: WindowManager::default(),
             clock_interval: 15,
             battery_interval: 120,
             brew_interval: 3600,
@@ -153,5 +168,14 @@ mod tests {
         assert_eq!(config.brew_interval, 3600);
         assert_eq!(config.teams_interval, 30);
         assert_eq!(config.system_interval, 5);
+        assert_eq!(config.window_manager, WindowManager::Aerospace);
+    }
+
+    #[test]
+    fn test_window_manager_parse() {
+        let wm: WindowManager = serde_json::from_str("\"rift\"").unwrap();
+        assert_eq!(wm, WindowManager::Rift);
+        let wm: WindowManager = serde_json::from_str("\"aerospace\"").unwrap();
+        assert_eq!(wm, WindowManager::Aerospace);
     }
 }

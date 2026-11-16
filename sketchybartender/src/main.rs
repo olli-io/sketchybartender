@@ -8,7 +8,11 @@ mod handlers;
 mod icon_map;
 mod mach_client;
 mod providers;
+mod rift;
+mod rift_events;
 mod window_events;
+mod window_watch;
+mod wm;
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -51,11 +55,11 @@ fn main() {
     // Wait for sketchybar to be ready
     thread::sleep(Duration::from_millis(200));
 
-    // Subscribe directly to AeroSpace's event stream. This drives workspace and
+    // Subscribe directly to the window manager's event stream (AeroSpace or
+    // Rift, from the `window_manager` config key). This drives workspace and
     // focus updates without going through a sketchybar listener item + sketchycli.
-    // The subscription requests the initial state on connect, so it also performs
-    // the first paint.
-    let window_nudge = aerospace_events::spawn(Arc::clone(&state));
+    // Each integration paints the initial state when it connects.
+    let window_nudge = wm::spawn_events(config.window_manager, Arc::clone(&state));
 
     // Spawn timer threads for periodic updates using configured intervals
     // Smart clock refresh: poll every 2 seconds until minute changes, then switch to 1-minute intervals
@@ -120,6 +124,7 @@ fn main() {
 
     // Takes over the main thread and never returns. AeroSpace never reports a
     // closed window, so we get that from the WindowServer directly; each
-    // notification nudges the window-set watcher to repaint.
+    // notification nudges the window-set watcher to repaint. (Rift does report
+    // it; the nudge is then a harmless extra check.)
     window_events::run(window_nudge);
 }

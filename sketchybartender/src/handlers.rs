@@ -4,12 +4,12 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::aerospace;
 use crate::aerospace_focus;
-use crate::aerospace_socket;
+use crate::config::WindowManager;
 use crate::icon_map;
 use crate::mach_client;
 use crate::providers;
+use crate::wm;
 
 /// Parse a color like "0xffbb60cd" to (r, g, b) tuple
 fn parse_color(color: &str) -> Option<(u8, u8, u8)> {
@@ -201,8 +201,8 @@ pub struct DaemonState {
     pub last_workspace_change: Option<Instant>,
     /// Previously rendered workspaces (to detect which ones need clearing)
     pub previous_workspaces: HashSet<String>,
-    /// Signature of the window set as of the last workspace repaint. AeroSpace
-    /// emits no window-closed event, so this is what closures are detected by.
+    /// Signature of the window set as of the last workspace repaint. The
+    /// watcher in `window_watch` compares it to find changes that no event told us about.
     pub last_window_signature: Option<String>,
     /// Configuration
     pub config: crate::config::Config,
@@ -384,16 +384,16 @@ pub fn handle_volume_refresh(vol: Option<u8>) {
     }
 }
 
+/// The window manager that the config selects.
+fn window_manager(state: &Arc<Mutex<DaemonState>>) -> WindowManager {
+    state.lock().map(|s| s.config.window_manager).unwrap_or_default()
+}
+
 pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
-    // Get app name from parameter or query aerospace
+    // Get app name from parameter or query the window manager
     let mut app_name = match app {
         Some(name) => name,
-        None => {
-            // Fallback: query aerospace for the focused window
-            aerospace_socket::run(&["list-windows", "--focused", "--format", "%{app-name}"])
-                .map(|s| s.trim().to_string())
-                .unwrap_or_default()
-        }
+        None => wm::focused_app_name(window_manager(state)).unwrap_or_default(),
     };
     
     // If app_name is empty, don't update (no focused window)
@@ -432,7 +432,7 @@ fn format_workspace_label(ws_id: &str, has_icon: bool) -> String {
 
 /// Repaint every workspace item. Returns whether a repaint actually happened:
 /// `false` means the call was debounced or the state lock was poisoned, so the
-/// bar may still be showing something older than what AeroSpace reports.
+/// bar may still be showing something older than what the window manager reports.
 pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
     // Debounce: Check if enough time has passed since the last workspace change
     let now = Instant::now();
@@ -456,25 +456,31 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
         return false; // Event was debounced
     }
 
-    // Small delay to let aerospace settle its internal state
+    let wm = window_manager(state);
+
+    // Small delay to let the window manager settle its internal state
     thread::sleep(Duration::from_millis(10));
 
     // Get all unique display IDs to determine if we're on single or multi-monitor setup
     let all_displays: HashSet<u32> = {
-        let temp_infos = aerospace::get_workspace_infos(false);
+        let temp_infos = wm::workspace_infos(wm, false);
         temp_infos.values().map(|info| info.display_id).collect()
     };
     let is_single_monitor = all_displays.len() == 1;
 
     // Show all windows on multiple monitors, one icon per app on single monitor
-    let mut infos = aerospace::get_workspace_infos(!is_single_monitor);
-    
-    // Manual display mapping: swap display 2 with display 3
-    for info in infos.values_mut() {
-        if info.display_id == 2 {
-            info.display_id = 3;
-        } else if info.display_id == 3 {
-            info.display_id = 2;
+    let mut infos = wm::workspace_infos(wm, !is_single_monitor);
+
+    // Manual display mapping: swap display 2 with display 3. AeroSpace numbers
+    // displays in NSScreen order, which is not sketchybar's order. Rift display
+    // IDs come from sketchybar's own order, so they need no swap.
+    if wm == WindowManager::Aerospace {
+        for info in infos.values_mut() {
+            if info.display_id == 2 {
+                info.display_id = 3;
+            } else if info.display_id == 3 {
+                info.display_id = 2;
+            }
         }
     }
 
@@ -503,7 +509,7 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
     // Create a batch per display
     let mut batches: HashMap<u32, SketchybarBatch> = HashMap::new();
 
-    // Clear workspaces that are no longer in aerospace's list
+    // Clear workspaces that are no longer in the window manager's list
     for ws_id in workspaces_to_clear {
         let item_name = format!("workspace.{}", ws_id);
         for display_id in &all_displays {
@@ -595,13 +601,22 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
     true
 }
 
-/// Focus a workspace via aerospace and launch its configured app if not already running.
+/// Focus a workspace and launch its configured app if not already running.
 /// Runs in a background thread so the daemon doesn't block on the app launch.
 pub fn handle_aerospace_focus(workspace: String, state: &Arc<Mutex<DaemonState>>) {
     let state = Arc::clone(state);
     thread::spawn(move || {
-        aerospace_focus::focus_workspace(&workspace);
+        aerospace_focus::focus_workspace(window_manager(&state), &workspace);
         handle_workspace_refresh(&state);
+    });
+}
+
+/// Focus a workspace (from a click on its bar item). The window manager's
+/// workspace event repaints the bar.
+pub fn handle_focus_workspace(workspace: String, state: &Arc<Mutex<DaemonState>>) {
+    let wm = window_manager(state);
+    thread::spawn(move || {
+        wm::focus_workspace(wm, &workspace);
     });
 }
 
