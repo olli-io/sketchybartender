@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::process::Command;
 use std::thread;
+use std::time::Instant;
 use chrono::{Local, Timelike, Utc};
 
 /// Battery information
@@ -10,14 +12,13 @@ pub struct BatteryInfo {
 }
 
 impl BatteryInfo {
-    /// Get the appropriate icon for the battery state
+    /// Get the appropriate icon for the battery state (Lucide glyphs)
     pub fn icon(&self) -> &'static str {
         match self.percentage {
-            90..=100 => "\u{f240}",
-            70..=89 => "\u{f241}",
-            40..=69 => "\u{f242}",
-            10..=39 => "\u{f243}",
-            _ => "\u{f244}",
+            70..=100 => "\u{e055}", // battery-full
+            30..=69 => "\u{e057}",  // battery-medium
+            10..=29 => "\u{e056}",  // battery-low
+            _ => "\u{e053}",        // battery (empty)
         }
     }
 
@@ -74,15 +75,15 @@ pub struct VolumeInfo {
 }
 
 impl VolumeInfo {
-    /// Get the appropriate icon for the volume level
+    /// Get the appropriate icon for the volume level (Lucide glyphs)
     pub fn icon(&self) -> &'static str {
         if self.muted || self.percentage == 0 {
-            return "󰖁";
+            return "\u{e1ac}"; // volume-x
         }
         match self.percentage {
-            60..=100 => "󰕾",
-            30..=59 => "󰖀",
-            _ => "󰕿",
+            60..=100 => "\u{e1ab}", // volume-2
+            30..=59 => "\u{e1aa}",  // volume-1
+            _ => "\u{e1a9}",        // volume
         }
     }
 }
@@ -120,12 +121,12 @@ pub fn get_clock() -> String {
 /// Current weather from FMI open data (OGC API-EDR, no API key).
 #[derive(Debug, Clone)]
 pub struct WeatherInfo {
-    /// Nerd Font glyph for the current sky condition.
+    /// Lucide glyph for the current sky condition.
     pub icon: String,
     /// Air temperature in °C.
     pub temp: f32,
-    /// Wind speed in m/s.
-    pub wind: f32,
+    /// Wind speed in m/s (10-minute average), None if the station has no reading.
+    pub wind: Option<f32>,
 }
 
 /// Longitude / latitude used for the position query (Turku).
@@ -205,7 +206,7 @@ fn fmi_latest(geojson: &str, key: &str) -> Option<String> {
     }
 }
 
-/// Map an FMI WeatherSymbol3 code to a Nerd Font glyph. Codes per FMI's
+/// Map an FMI WeatherSymbol3 code to a Lucide glyph. Codes per FMI's
 /// download-service guide:
 ///   1 clear  2 partly cloudy  3 overcast
 ///   21/22/23 showers        31/32/33 rain
@@ -213,29 +214,36 @@ fn fmi_latest(geojson: &str, key: &str) -> Option<String> {
 ///   61/62 thundershowers    63/64 thunderstorm
 ///   71/72/73 sleet showers  81/82/83 sleet
 ///   91 mist                 92 fog
-/// `is_day` selects sun vs moon for the clear-sky code.
+/// `is_day` selects sun vs moon for the clear and partly cloudy codes.
+/// The glyphs are Lucide icons (see `codepoints.json` of the pinned release).
 fn weather_symbol_icon(sym: u32, is_day: bool) -> &'static str {
     match sym {
         1 => {
             if is_day {
-                "\u{e30d}" // nf-weather-day_sunny
+                "\u{e178}" // sun
             } else {
-                "\u{e32b}" // nf-weather-night_clear
+                "\u{e11e}" // moon
             }
         }
-        2 => "\u{e302}",                       // partly cloudy
-        3 => "\u{e33d}",                       // overcast
-        21 | 22 | 23 => "\u{e319}",            // showers
-        31 | 32 | 33 => "\u{e318}",            // rain
-        41..=53 => "\u{e31a}",                 // snow (showers & snowfall)
-        61..=64 => "\u{e31d}",                 // thunder
-        71..=83 => "\u{e3ad}",                 // sleet
-        91 | 92 => "\u{e313}",                 // mist / fog
-        _ => "\u{e374}",                       // na
+        2 => {
+            if is_day {
+                "\u{e216}" // cloud-sun
+            } else {
+                "\u{e215}" // cloud-moon
+            }
+        }
+        3 => "\u{e217}",                       // cloudy (overcast)
+        21 | 22 | 23 => "\u{e08a}",            // cloud-drizzle (showers)
+        31 | 32 | 33 => "\u{e08e}",            // cloud-rain
+        41..=53 => "\u{e090}",                 // cloud-snow
+        61..=64 => "\u{e08c}",                 // cloud-lightning
+        71..=83 => "\u{e08b}",                 // cloud-hail (sleet)
+        91 | 92 => "\u{e214}",                 // cloud-fog
+        _ => "\u{e082}",                       // circle-help (n/a)
     }
 }
 
-/// Fetch the current weather: real temperature/wind from the nearest station,
+/// Fetch the current weather: real temperature from the nearest station,
 /// sky icon from the forecast for the current hour. Returns None if the
 /// measurements are unavailable (offline, or FMI down).
 pub fn get_weather() -> Option<WeatherInfo> {
@@ -245,11 +253,16 @@ pub fn get_weather() -> Option<WeatherInfo> {
         .format("%Y-%m-%dT%H:%M:%SZ")
         .to_string();
 
-    // Measurements: temperature (ta_pt1m_avg) and wind (ws_pt10m_avg) over the
-    // last hour, taking the newest non-null reading of each.
-    let obs = fmi_edr("opendata", "ta_pt1m_avg,ws_pt10m_avg", &format!("{}/{}", start, end))?;
+    // Measurement: temperature (ta_pt1m_avg) over the last hour, taking the
+    // newest non-null reading.
+    let obs = fmi_edr("opendata", "ta_pt1m_avg", &format!("{}/{}", start, end))?;
     let temp: f32 = fmi_latest(&obs, "ta_pt1m_avg")?.parse().ok()?;
-    let wind: f32 = fmi_latest(&obs, "ws_pt10m_avg")?.parse().ok()?;
+
+    // Wind speed (ws_pt10m_avg) from the same station window. Optional — the
+    // label falls back to the temperature alone if the station has no reading.
+    let wind: Option<f32> = fmi_edr("opendata", "ws_pt10m_avg", &format!("{}/{}", start, end))
+        .and_then(|g| fmi_latest(&g, "ws_pt10m_avg"))
+        .and_then(|s| s.parse().ok());
 
     // Sky icon: the forecast's weathersymbol3 for the current hour. Optional —
     // fall back to a neutral glyph if the forecast call fails.
@@ -263,10 +276,45 @@ pub fn get_weather() -> Option<WeatherInfo> {
             let is_day = (7..21).contains(&local_hour);
             weather_symbol_icon(sym, is_day)
         })
-        .unwrap_or("\u{e374}")
+        .unwrap_or("\u{e082}") // circle-help
         .to_string();
 
     Some(WeatherInfo { icon, temp, wind })
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGDisplayIsBuiltin(display: u32) -> u32;
+}
+
+/// The displays sketchybar draws on, split by whether they are the built-in
+/// (notched) panel: `(builtin, external)`, each a list of sketchybar
+/// arrangement ids as used by the item `display` property. Empty lists if the
+/// query fails.
+pub fn display_arrangement_ids() -> (Vec<u32>, Vec<u32>) {
+    let mut builtin = Vec::new();
+    let mut external = Vec::new();
+    let Ok(Some(json)) = crate::mach_client::sketchybar("--query displays") else {
+        return (builtin, external);
+    };
+    let Ok(displays) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return (builtin, external);
+    };
+    for d in displays.as_array().into_iter().flatten() {
+        let (Some(adid), Some(did)) = (
+            d.get("arrangement-id").and_then(|v| v.as_u64()),
+            d.get("DirectDisplayID").and_then(|v| v.as_u64()),
+        ) else {
+            continue;
+        };
+        // SAFETY: CGDisplayIsBuiltin is a plain query of a display id.
+        if unsafe { CGDisplayIsBuiltin(did as u32) } != 0 {
+            builtin.push(adid as u32);
+        } else {
+            external.push(adid as u32);
+        }
+    }
+    (builtin, external)
 }
 
 /// Brew outdated information
@@ -285,7 +333,7 @@ impl BrewInfo {
 
     /// Get the appropriate icon
     pub fn icon(&self) -> &'static str {
-        "\u{f130c}"
+        "\u{e2cf}" // beer
     }
 }
 
@@ -346,6 +394,136 @@ pub struct SystemInfo {
 /// A snapshot of cumulative CPU ticks since boot: (busy, total).
 /// `busy` = user + system + nice; `total` = busy + idle.
 pub type CpuTicks = (u64, u64);
+
+/// The `struct if_data` that `getifaddrs` hands out for AF_LINK entries on
+/// macOS (`<net/if_var.h>`). Only the leading fields up to the byte counters
+/// are declared; the counters are 32-bit and wrap, which `net_rates` handles.
+/// libc only binds the 64-bit `if_data64` used by the routing socket.
+#[repr(C)]
+struct IfData {
+    ifi_type: u8,
+    ifi_typelen: u8,
+    ifi_physical: u8,
+    ifi_addrlen: u8,
+    ifi_hdrlen: u8,
+    ifi_recvquota: u8,
+    ifi_xmitquota: u8,
+    ifi_unused1: u8,
+    ifi_mtu: u32,
+    ifi_metric: u32,
+    ifi_baudrate: u32,
+    ifi_ipackets: u32,
+    ifi_ierrors: u32,
+    ifi_opackets: u32,
+    ifi_oerrors: u32,
+    ifi_collisions: u32,
+    ifi_ibytes: u32,
+    ifi_obytes: u32,
+}
+
+/// Cumulative (received, sent) byte counters per interface, with the time
+/// they were read.
+pub struct NetSample {
+    pub at: Instant,
+    pub bytes: HashMap<String, (u32, u32)>,
+}
+
+/// Read the byte counters of every `en*` interface (Wi-Fi, Ethernet and
+/// Thunderbolt adapters). Tunnels (`utun*`), AirDrop (`awdl0`) and loopback
+/// are left out: VPN traffic is already counted on the carrier interface.
+pub fn read_net_sample() -> NetSample {
+    let mut bytes = HashMap::new();
+    let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs fills a linked list we walk read-only and free once.
+    unsafe {
+        if libc::getifaddrs(&mut list) == 0 {
+            let mut cur = list;
+            while !cur.is_null() {
+                let ifa = &*cur;
+                cur = ifa.ifa_next;
+                if ifa.ifa_addr.is_null()
+                    || (*ifa.ifa_addr).sa_family as i32 != libc::AF_LINK
+                    || ifa.ifa_data.is_null()
+                {
+                    continue;
+                }
+                let name = std::ffi::CStr::from_ptr(ifa.ifa_name)
+                    .to_string_lossy()
+                    .into_owned();
+                if !name.starts_with("en") {
+                    continue;
+                }
+                let data = &*(ifa.ifa_data as *const IfData);
+                bytes.insert(name, (data.ifi_ibytes, data.ifi_obytes));
+            }
+            libc::freeifaddrs(list);
+        }
+    }
+    NetSample { at: Instant::now(), bytes }
+}
+
+/// Bytes per second (down, up) between two samples, summed over the
+/// interfaces present in both. Counter wraps are handled per interface.
+pub fn net_rates(prev: &NetSample, cur: &NetSample) -> (f64, f64) {
+    let secs = cur.at.duration_since(prev.at).as_secs_f64();
+    if secs <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let (mut down, mut up) = (0u64, 0u64);
+    for (name, (ibytes, obytes)) in &cur.bytes {
+        if let Some((prev_i, prev_o)) = prev.bytes.get(name) {
+            down += ibytes.wrapping_sub(*prev_i) as u64;
+            up += obytes.wrapping_sub(*prev_o) as u64;
+        }
+    }
+    (down as f64 / secs, up as f64 / secs)
+}
+
+/// Format a byte rate in exactly 4 characters, so the label width does not
+/// change: "0.0K", "1.2K", "20KB", "154K", "1.2M", "12MB", "154M", "1.2G".
+/// Two-digit values get a "B" suffix to fill the fourth character.
+pub fn format_rate(bytes_per_sec: f64) -> String {
+    const UNITS: [char; 4] = ['K', 'M', 'G', 'T'];
+    let mut v = bytes_per_sec.max(0.0) / 1024.0;
+    for (i, unit) in UNITS.iter().enumerate() {
+        // Thresholds use the rounded value, so 9.96 shows as "10KB", not "10.0K".
+        if v < 9.95 {
+            return format!("{:.1}{}", v, unit);
+        } else if v < 99.5 {
+            return format!("{:.0}{}B", v, unit);
+        } else if v < 999.5 || i == UNITS.len() - 1 {
+            return format!("{:.0}{}", v.min(999.0), unit);
+        }
+        v /= 1024.0;
+    }
+    unreachable!()
+}
+
+#[cfg(test)]
+mod format_rate_tests {
+    use super::format_rate;
+
+    #[test]
+    fn fixed_width() {
+        let k = 1024.0;
+        let cases = [
+            (0.0, "0.0K"),
+            (1.2 * k, "1.2K"),
+            (9.96 * k, "10KB"),
+            (20.0 * k, "20KB"),
+            (99.6 * k, "100K"),
+            (154.0 * k, "154K"),
+            (999.6 * k, "1.0M"),
+            (1.2 * k * k, "1.2M"),
+            (12.0 * k * k, "12MB"),
+            (154.0 * k * k, "154M"),
+            (1.2 * k * k * k, "1.2G"),
+        ];
+        for (input, want) in cases {
+            assert_eq!(format_rate(input), want, "input {}", input);
+        }
+    }
+}
 
 /// Read the kernel's cumulative CPU-tick counters via `host_statistics`.
 ///
@@ -482,7 +660,7 @@ pub struct TeamsInfo {
 impl TeamsInfo {
     /// Get the appropriate icon (Microsoft Teams icon)
     pub fn icon(&self) -> &'static str {
-        "󰊻" // nf-md-microsoft_teams
+        "\u{e117}" // message-square
     }
 
     /// Get the icon color based on state
@@ -562,25 +740,25 @@ mod tests {
         // The battery glyph reflects the charge level only; charging state is
         // conveyed through icon_color, not icon().
         let full = BatteryInfo { percentage: 95, is_charging: false };
-        assert_eq!(full.icon(), "\u{f240}"); // nf-fa-battery_full
+        assert_eq!(full.icon(), "\u{e055}"); // battery-full
 
         let mid = BatteryInfo { percentage: 50, is_charging: true };
-        assert_eq!(mid.icon(), "\u{f242}"); // nf-fa-battery_half
+        assert_eq!(mid.icon(), "\u{e057}"); // battery-medium
 
         let empty = BatteryInfo { percentage: 5, is_charging: false };
-        assert_eq!(empty.icon(), "\u{f244}"); // nf-fa-battery_empty
+        assert_eq!(empty.icon(), "\u{e053}"); // battery (empty)
     }
 
     #[test]
     fn test_volume_icons() {
         let high = VolumeInfo { percentage: 80, muted: false };
-        assert_eq!(high.icon(), "\u{f057e}"); // nf-md-volume_high
+        assert_eq!(high.icon(), "\u{e1ab}"); // volume-2
 
         let muted = VolumeInfo { percentage: 80, muted: true };
-        assert_eq!(muted.icon(), "\u{f0581}"); // nf-md-volume_off
+        assert_eq!(muted.icon(), "\u{e1ac}"); // volume-x
 
         let zero = VolumeInfo { percentage: 0, muted: false };
-        assert_eq!(zero.icon(), "\u{f0581}"); // 0% renders as muted
+        assert_eq!(zero.icon(), "\u{e1ac}"); // 0% renders as muted
     }
 
     #[test]

@@ -5,7 +5,6 @@ mod aerospace_socket;
 mod config;
 mod daemon;
 mod handlers;
-mod icon_map;
 mod mach_client;
 mod providers;
 mod rift;
@@ -109,11 +108,12 @@ fn main() {
         // Bootstrap the CPU tick counters so the first displayed value (one
         // interval from now) is a real reading rather than 0%.
         let mut prev_cpu = providers::read_cpu_ticks();
-        handlers::handle_system_refresh(&mut prev_cpu);
+        let mut prev_net = providers::read_net_sample();
+        handlers::handle_system_refresh(&mut prev_cpu, &mut prev_net);
 
         loop {
             thread::sleep(Duration::from_secs(system_interval));
-            handlers::handle_system_refresh(&mut prev_cpu);
+            handlers::handle_system_refresh(&mut prev_cpu, &mut prev_net);
         }
     });
 

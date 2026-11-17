@@ -67,10 +67,7 @@ pub fn get_focused_workspace() -> Option<FocusedWorkspaceInfo> {
 }
 
 /// Get workspace information for all workspaces
-///
-/// # Arguments
-/// * `show_all_windows` - If true, show an icon for each window. If false, show one icon per app.
-pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceInfo> {
+pub fn get_workspace_infos() -> HashMap<String, WorkspaceInfo> {
     // Use the new JSON API to get all window information in one call
     // Retry if window list seems stale
     let mut windows = get_windows();
@@ -142,7 +139,7 @@ pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceI
     workspace_data
         .into_iter()
         .map(|(ws_id, (apps, is_focused, display_id))| {
-            let info = WorkspaceInfo::new(ws_id.clone(), apps, is_focused, display_id, show_all_windows);
+            let info = WorkspaceInfo::new(ws_id.clone(), apps, is_focused, display_id);
             (ws_id, info)
         })
         .collect()
@@ -158,7 +155,6 @@ mod tests {
         let mut info = WorkspaceInfo::default();
         info.id = "1".to_string();
         info.apps = vec!["Safari".to_string(), "Cursor".to_string()];
-        info.icons = ":safari: :cursor:".to_string();
         info.is_focused = true;
 
         assert_eq!(info.apps.len(), 2);

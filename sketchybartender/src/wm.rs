@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::config::WindowManager;
 use crate::handlers::DaemonState;
-use crate::icon_map::get_icon;
 use crate::{aerospace, aerospace_events, aerospace_socket, rift, rift_events};
 
 /// Information about a workspace
@@ -16,8 +15,8 @@ use crate::{aerospace, aerospace_events, aerospace_socket, rift, rift_events};
 pub struct WorkspaceInfo {
     #[allow(dead_code)] // Used in tests
     pub id: String,
+    /// App name of each window (one entry for each window)
     pub apps: Vec<String>,
-    pub icons: String,
     #[allow(dead_code)] // Used in tests
     pub is_focused: bool,
     /// Sketchybar display ID (arrangement index, starts at 1)
@@ -25,48 +24,17 @@ pub struct WorkspaceInfo {
 }
 
 impl WorkspaceInfo {
-    /// Make a workspace entry. With `show_all_windows` there is one icon for
-    /// each window, else one icon for each app.
-    pub fn new(id: String, apps: Vec<String>, is_focused: bool, display_id: u32, show_all_windows: bool) -> Self {
-        let icons: String = if show_all_windows {
-            apps.iter().map(|app| get_icon(app)).collect()
-        } else {
-            let mut unique_apps = apps.clone();
-            unique_apps.sort();
-            unique_apps.dedup();
-            unique_apps.iter().map(|app| get_icon(app)).collect()
-        };
-
-        Self {
-            id,
-            apps,
-            icons: icons.trim_end().to_string(),
-            is_focused,
-            display_id,
-        }
+    pub fn new(id: String, apps: Vec<String>, is_focused: bool, display_id: u32) -> Self {
+        Self { id, apps, is_focused, display_id }
     }
 }
 
 /// Workspaces to show on the bar, keyed by workspace ID.
-pub fn workspace_infos(wm: WindowManager, show_all_windows: bool) -> HashMap<String, WorkspaceInfo> {
+pub fn workspace_infos(wm: WindowManager) -> HashMap<String, WorkspaceInfo> {
     match wm {
-        WindowManager::Aerospace => aerospace::get_workspace_infos(show_all_windows),
-        WindowManager::Rift => rift::get_workspace_infos(show_all_windows),
+        WindowManager::Aerospace => aerospace::get_workspace_infos(),
+        WindowManager::Rift => rift::get_workspace_infos(),
     }
-}
-
-/// The app name of the focused window, if there is one.
-pub fn focused_app_name(wm: WindowManager) -> Option<String> {
-    let name = match wm {
-        WindowManager::Aerospace => {
-            aerospace_socket::run(&["list-windows", "--focused", "--format", "%{app-name}"])
-                .ok()?
-                .trim()
-                .to_string()
-        }
-        WindowManager::Rift => rift::focused_app_name()?,
-    };
-    (!name.is_empty()).then_some(name)
 }
 
 /// A fingerprint of the window set. A change tells the watcher to repaint.

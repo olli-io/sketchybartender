@@ -24,10 +24,9 @@ use mach2::port::{mach_port_name_t, mach_port_t};
 use mach2::task::task_get_special_port;
 use mach2::task_special_ports::TASK_BOOTSTRAP_PORT;
 use mach2::traps::mach_task_self;
-use rift_client::{EventKind, RiftMachClient, WindowId};
+use rift_client::{EventKind, RiftMachClient};
 
-use crate::handlers::{handle_focus_refresh, DaemonState};
-use crate::rift;
+use crate::handlers::DaemonState;
 use crate::window_watch::{self, refresh_workspaces};
 
 const DEFAULT_SERVICE_NAME: &str = "git.acsandmann.rift";
@@ -129,7 +128,6 @@ fn subscribe_until_rift_stops(state: &Arc<Mutex<DaemonState>>, nudge_tx: &Sender
 
     // Rift sends no initial state, so paint it now.
     refresh_workspaces(state);
-    handle_focus_refresh(None, state);
 
     while !right.is_dead() {
         thread::sleep(LIVENESS_INTERVAL);
@@ -149,14 +147,7 @@ fn dispatch(event: &serde_json::Value, state: &Arc<Mutex<DaemonState>>, nudge_tx
             // The repaint can be debounced. The watcher finds what it dropped.
             let _ = nudge_tx.send(());
         }
-        "focused_window_changed" => {
-            let app = event
-                .get("window_id")
-                .and_then(|id| serde_json::from_value::<WindowId>(id.clone()).ok())
-                .and_then(rift::window_app_name_for);
-            handle_focus_refresh(app, state);
-        }
-        // Layout, stacks, titles, binding mode, config: nothing to draw.
+        // Focus, layout, stacks, titles, binding mode, config: nothing to draw.
         _ => {}
     }
 }

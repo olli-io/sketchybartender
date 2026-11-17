@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 
 use crate::aerospace_focus;
 use crate::config::WindowManager;
-use crate::icon_map;
 use crate::mach_client;
 use crate::providers;
 use crate::wm;
@@ -145,22 +144,56 @@ fn update_volume(icon: &str, percentage: u8) -> Result<(), std::io::Error> {
     ])
 }
 
-/// Update the front app item
-fn update_front_app(icon: &str, app_name: &str) -> Result<(), std::io::Error> {
-    set_item("front_app", &[
-        ("icon", icon),
-        ("label", &format!("› {}", app_name)),
-    ])
+/// The last weather reading, kept so a display change can repaint without
+/// another network round trip.
+static LAST_WEATHER: Mutex<Option<providers::WeatherInfo>> = Mutex::new(None);
+
+/// Paint the two weather items. `weather` sits right of the notch and is
+/// shown on the built-in display only; `weather.wide` is centered and shown
+/// on every other display. Both show the same reading. An item with no
+/// display to go on (clamshell mode, no external screen) is hidden, as are
+/// both until the first reading arrives.
+fn paint_weather() -> Result<(), std::io::Error> {
+    let info = LAST_WEATHER.lock().map(|w| w.clone()).unwrap_or_default();
+    let (builtin, external) = providers::display_arrangement_ids();
+
+    let mut batch = SketchybarBatch::new();
+    match &info {
+        Some(info) => {
+            let label = match info.wind {
+                Some(wind) => format!("{:.1}° {:.0} m/s", info.temp, wind),
+                None => format!("{:.1}°", info.temp),
+            };
+            for (item, displays) in [("weather", builtin), ("weather.wide", external)] {
+                if displays.is_empty() {
+                    batch.set(item, &[("drawing", "off")]);
+                } else {
+                    let display_list = displays
+                        .iter()
+                        .map(|d| d.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    batch.set(item, &[
+                        ("icon", &info.icon),
+                        ("label", &label),
+                        ("display", &display_list),
+                        ("drawing", "on"),
+                    ]);
+                }
+            }
+        }
+        None => {
+            batch.set("weather", &[("drawing", "off")]);
+            batch.set("weather.wide", &[("drawing", "off")]);
+        }
+    }
+    batch.execute()
 }
 
-/// Update the weather item
-fn update_weather(icon: &str, temp: f32, wind: f32) -> Result<(), std::io::Error> {
-    set_item("weather", &[
-        ("icon", icon),
-        ("label", &format!("{:.1}° {:.1} m/s", temp, wind)),
-        ("drawing", "on"),
-    ])
-}
+/// Label fonts of the brew item: the Lucide icon font while an upgrade runs,
+/// and the text font from sketchybarrc otherwise.
+const LUCIDE_LABEL_FONT: &str = "lucide:Regular:13.0";
+const TEXT_LABEL_FONT: &str = "JetbrainsMono Nerd Font:Bold:13.0";
 
 /// Update the brew outdated item
 fn update_brew(icon: &str, formulae: usize, casks: usize) -> Result<(), std::io::Error> {
@@ -195,8 +228,6 @@ fn update_teams(icon: &str, icon_color: &str, border_color: &str, notification_c
 /// Shared state for the daemon
 #[derive(Debug)]
 pub struct DaemonState {
-    /// Current front app (for deduplication)
-    pub front_app: String,
     /// Last workspace change timestamp for debouncing
     pub last_workspace_change: Option<Instant>,
     /// Previously rendered workspaces (to detect which ones need clearing)
@@ -211,7 +242,6 @@ pub struct DaemonState {
 impl DaemonState {
     pub fn new(config: crate::config::Config) -> Self {
         Self {
-            front_app: String::new(),
             last_workspace_change: None,
             previous_workspaces: HashSet::new(),
             last_window_signature: None,
@@ -239,9 +269,20 @@ pub fn handle_weather_refresh() {
     // Offline or FMI down: leave the previous reading on the bar rather than
     // clearing it, matching the reference module's "keep last reading" behaviour.
     if let Some(info) = providers::get_weather() {
-        if let Err(e) = update_weather(&info.icon, info.temp, info.wind) {
+        if let Ok(mut last) = LAST_WEATHER.lock() {
+            *last = Some(info);
+        }
+        if let Err(e) = paint_weather() {
             eprintln!("Failed to update weather: {}", e);
         }
+    }
+}
+
+/// A display was added, removed, or the active display changed: move the
+/// weather items to the displays they belong on.
+pub fn handle_display_changed() {
+    if let Err(e) = paint_weather() {
+        eprintln!("Failed to move weather items: {}", e);
     }
 }
 
@@ -306,11 +347,25 @@ pub fn handle_teams_clicked() {
     });
 }
 
-pub fn handle_system_refresh(prev_cpu: &mut Option<providers::CpuTicks>) {
+pub fn handle_system_refresh(
+    prev_cpu: &mut Option<providers::CpuTicks>,
+    prev_net: &mut providers::NetSample,
+) {
     let (info, cur_cpu) = providers::get_system_info(*prev_cpu);
     *prev_cpu = cur_cpu;
 
+    let cur_net = providers::read_net_sample();
+    let (down, up) = providers::net_rates(prev_net, &cur_net);
+    *prev_net = cur_net;
+
     let mut batch = SketchybarBatch::new();
+    batch.set("network", &[
+        ("label", &format!(
+            "{}↓{}↑",
+            providers::format_rate(down),
+            providers::format_rate(up)
+        )),
+    ]);
     batch.set("cpu", &[
         ("label", &format!("{}%", info.cpu_percentage)),
     ]);
@@ -318,14 +373,17 @@ pub fn handle_system_refresh(prev_cpu: &mut Option<providers::CpuTicks>) {
         ("label", &format!("{:.1}/{:.0}GB", info.ram_used_gb, info.ram_total_gb)),
     ]);
     if let Err(e) = batch.execute() {
-        eprintln!("Failed to update cpu/ram: {}", e);
+        eprintln!("Failed to update cpu/ram/network: {}", e);
     }
 }
 
 pub fn handle_brew_upgrade() {
-    // Set the refresh icon
+    // Show the Lucide refresh-cw glyph in the label while the upgrade runs.
+    // The label font is a text font, so switch it to Lucide for the glyph and
+    // restore it when the upgrade is done.
     if let Err(e) = set_item("brew", &[
-        ("label", "\u{f409}"),
+        ("label.font", LUCIDE_LABEL_FONT),
+        ("label", "\u{e145}"),
         ("label.y_offset", "0"),
     ]) {
         eprintln!("Failed to set brew refreshing label: {}", e);
@@ -363,7 +421,7 @@ pub fn handle_brew_upgrade() {
         }
 
         // Refresh the brew count after upgrade completes (this cancels animation and resets offset)
-        if let Err(e) = set_item("brew", &[("label.y_offset", "0")]) {
+        if let Err(e) = set_item("brew", &[("label.y_offset", "0"), ("label.font", TEXT_LABEL_FONT)]) {
             eprintln!("Failed to reset brew offset: {}", e);
         }
         handle_brew_refresh();
@@ -389,44 +447,14 @@ fn window_manager(state: &Arc<Mutex<DaemonState>>) -> WindowManager {
     state.lock().map(|s| s.config.window_manager).unwrap_or_default()
 }
 
-pub fn handle_focus_refresh(app: Option<String>, state: &Arc<Mutex<DaemonState>>) {
-    // Get app name from parameter or query the window manager
-    let mut app_name = match app {
-        Some(name) => name,
-        None => wm::focused_app_name(window_manager(state)).unwrap_or_default(),
-    };
-    
-    // If app_name is empty, don't update (no focused window)
-    if app_name.is_empty() {
-        return;
-    }
-    
-    // Remove "Microsoft " prefix from app names
-    if app_name.starts_with("Microsoft ") {
-        app_name = app_name.strip_prefix("Microsoft ").unwrap().to_string();
-    }
-    
-    let icon = icon_map::get_icon(&app_name);
-
-    // Update state
-    if let Ok(mut s) = state.lock() {
-        if s.front_app == app_name {
-            return; // No change
-        }
-        s.front_app = app_name.clone();
-    }
-
-    if let Err(e) = update_front_app(icon, &app_name) {
-        eprintln!("Failed to update front_app: {}", e);
-    }
-}
-
-/// Helper to build workspace label with bracket formatting
-fn format_workspace_label(ws_id: &str, has_icon: bool) -> String {
-    if has_icon {
-        format!("[{}]", ws_id)
+/// Dots for a workspace item: one filled dot for each window, or one outlined
+/// dot when the workspace has no windows. An en space (U+2002) separates the
+/// dots. It is narrower than a normal space in the monospace bar font.
+fn workspace_dots(window_count: usize) -> String {
+    if window_count == 0 {
+        "\u{25cb}".to_string()
     } else {
-        format!("\u{f444} [{}]", ws_id)
+        vec!["\u{25cf}"; window_count].join("\u{2002}")
     }
 }
 
@@ -461,15 +489,7 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
     // Small delay to let the window manager settle its internal state
     thread::sleep(Duration::from_millis(10));
 
-    // Get all unique display IDs to determine if we're on single or multi-monitor setup
-    let all_displays: HashSet<u32> = {
-        let temp_infos = wm::workspace_infos(wm, false);
-        temp_infos.values().map(|info| info.display_id).collect()
-    };
-    let is_single_monitor = all_displays.len() == 1;
-
-    // Show all windows on multiple monitors, one icon per app on single monitor
-    let mut infos = wm::workspace_infos(wm, !is_single_monitor);
+    let mut infos = wm::workspace_infos(wm);
 
     // Manual display mapping: swap display 2 with display 3. AeroSpace numbers
     // displays in NSScreen order, which is not sketchybar's order. Rift display
@@ -483,6 +503,9 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
             }
         }
     }
+
+    // All displays that have a workspace, to clear old items on each of them.
+    let all_displays: HashSet<u32> = infos.values().map(|info| info.display_id).collect();
 
     // Get the set of current workspaces
     let current_workspaces: HashSet<String> = infos.keys().cloned().collect();
@@ -528,34 +551,32 @@ pub fn handle_workspace_refresh(state: &Arc<Mutex<DaemonState>>) -> bool {
     // Process each workspace in sorted order (matching bar position)
     for (position, ws_id) in sorted_ws_ids.iter().enumerate() {
         let info = &infos[*ws_id];
-        let has_apps = !info.apps.is_empty();
         let is_focused = info.is_focused;
         let display_id = info.display_id;
         let item_name = format!("workspace.{}", ws_id);
         let display_str = display_id.to_string();
         let batch = batches.entry(display_id).or_insert_with(SketchybarBatch::new);
 
-        // Determine colors and states
-        let label_color = if is_focused {
+        // The item icon is the workspace ID, and the item label is the window
+        // dots, so the dots come after the ID. The "label" colors in the config
+        // apply to the ID, and the "icon" colors apply to the dots.
+        let id_color = if is_focused {
             &config.workspace_focused_label_color
         } else {
             &config.workspace_unfocused_label_color
         };
-        let icon_color = if is_focused {
+        let dot_color = if is_focused {
             &config.workspace_focused_icon_color
         } else {
             &config.workspace_unfocused_icon_color
         };
-        let icon_value = if has_apps { &info.icons } else { "" };
-        let icon_drawing = if has_apps { "on" } else { "off" };
         let background_drawing = if is_focused { "on" } else { "off" };
 
         let mut settings = vec![
-            ("label", format_workspace_label(ws_id, has_apps)),
-            ("label.color", label_color.to_string()),
-            ("icon", icon_value.to_string()),
-            ("icon.color", icon_color.to_string()),
-            ("icon.drawing", icon_drawing.to_string()),
+            ("icon", ws_id.to_string()),
+            ("icon.color", id_color.to_string()),
+            ("label", workspace_dots(info.apps.len())),
+            ("label.color", dot_color.to_string()),
             ("drawing", "on".to_string()),
             ("background.drawing", background_drawing.to_string()),
             ("display", display_str.clone()),
@@ -620,3 +641,15 @@ pub fn handle_focus_workspace(workspace: String, state: &Arc<Mutex<DaemonState>>
     });
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_workspace_dots() {
+        assert_eq!(workspace_dots(0), "\u{25cb}");
+        assert_eq!(workspace_dots(1), "\u{25cf}");
+        assert_eq!(workspace_dots(3), "\u{25cf}\u{2002}\u{25cf}\u{2002}\u{25cf}");
+    }
+}

@@ -39,6 +39,7 @@ cd sketchybar-employees
 
 This will:
 
+- Install the [Lucide](https://lucide.dev) icon font (pinned release) to `~/Library/Fonts` if it is missing. The bar icons are Lucide glyphs.
 - Build and install `sketchybartender` (Rust daemon)
 - Build and install `sketchycli` (CLI tool)
 - Copy configuration files to `~/.config/sketchybar/`
@@ -63,7 +64,7 @@ The daemon subscribes to the window manager's events directly. You do not need c
 
 Rift notes:
 
-- The bar shows Rift workspaces by number (`[1]`, `[2]`, ...), with the 1-based workspace index. A click on an item switches to that workspace.
+- The bar shows a Rift workspace by its name if the name is one character, `1`-`9` or `a`-`z` (set `workspace_names` in the Rift config). Otherwise it shows the 1-based workspace index. A click on an item switches to that workspace.
 - In Rift's `per_display` mode, each display has a workspace "1". Sketchybar can show an item on one display only, so the bar shows the focused display's workspace. Use `global` mode to see all workspaces on a multi-display setup.
 
 ### 4. Ensure PATH is Set

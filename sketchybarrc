@@ -1,17 +1,15 @@
 # Sketchybar configuration with Rust helper daemon
 # The daemon handles all plugin logic for better performance
 
-##### Start Helper Daemon #####
-# Kill any existing helper and start fresh
-pkill -f "${HOME}/.local/bin/sketchybartender" 2>/dev/null
-sleep 0.2
-
-# Start the daemon with full path and proper backgrounding
-nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
 nohup /opt/homebrew/bin/miniserve "${HOME}/.config/html/vimium-landing.html" --port 8082 >/dev/null 2>&1 &
 
 ##### Bar Appearance #####
-sketchybar --bar position=top height=33 blur_radius=0 color=0xff282828 margin=0 padding_left=15 padding_right=10
+# Icons are Lucide glyphs (https://lucide.dev), drawn with the Lucide icon font
+# that install.sh puts in ~/Library/Fonts. Workspace items show their ID as the
+# icon, so they keep the text font. sketchybartender sets the glyphs.
+lucide_font="lucide:Regular"
+
+sketchybar --bar position=top height=33 blur_radius=0 color=0xff141617 margin=0 padding_left=15 padding_right=10
 ##### Changing Defaults #####
 default=(
   icon.font="JetbrainsMono Nerd Font:Bold:15.0"
@@ -33,45 +31,39 @@ sketchybar --default "${default[@]}"
 # through the same window manager.
 
 # Add workspace items for lettered workspaces (no subscriptions, updated by workspace_manager)
+# The icon is the workspace ID. The label is one dot for each window (an
+# outlined dot for an empty workspace), so the dots come after the ID.
 workspace_items=()
 for workspace in {1..9} {a..z} ; do
     sketchybar --add item "workspace.$workspace" left \
         --set "workspace.$workspace" \
-        icon.font="sketchybar-app-font:Regular:13.0" \
-        label.font="JetbrainsMono Nerd Font:Bold:13.0" \
+        icon.font="JetbrainsMono Nerd Font:Bold:13.0" \
+        label.font="JetbrainsMono Nerd Font:Bold:11.0" \
         background.corner_radius=0 \
         background.height=22 \
         background.drawing=off \
         icon.padding_left=0 \
-        icon.padding_right=0 \
-        label.padding_left=1 \
+        icon.padding_right=6 \
+        label.padding_left=0 \
         label.padding_right=2 \
         label.y_offset=0 \
         padding_left=0 \
-        padding_right=11 \
+        padding_right=14 \
         drawing=off \
         click_script="$HOME/.local/bin/sketchycli focus-workspace $workspace"
     workspace_items+=("workspace.$workspace")
 done
 
-##### Adding Left Items #####
-# Workspace and focus (front_app) updates are driven by the sketchybartender
-# daemon subscribing directly to the window manager's event stream — no sketchybar event
-# listeners or sketchycli hops needed.
-sketchybar --add item front_app left \
-           --set front_app \
-           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
-           label.color=0xffddc7a1 \
-           icon.drawing=off \
-           padding_left=0 \
-           padding_right=8
-
 ##### Adding Right Items #####
 # Clock, battery, brew, and teams are now updated automatically by sketchybartender
 # Update intervals can be configured in ~/.config/sketchybar/sketchybartenderrc
 
+# Icon: Lucide calendar-clock (U+E304)
 sketchybar --add item clock right \
-           --set clock icon.drawing=off \
+           --set clock icon="" \
+           icon.font="$lucide_font:13.0" \
+           icon.padding_left=0 \
+           icon.padding_right=2 \
            click_script="open -a 'Calendar'" \
            padding_left=8 \
            padding_right=0
@@ -80,47 +72,86 @@ sketchybar --add item battery right \
            --subscribe battery power_source_change system_woke\
            --set battery script="$HOME/.local/bin/sketchycli on-power-source-changed \$INFO" \
            click_script="open 'x-apple.systempreferences:com.apple.Battery-Settings.extension'" \
+           icon.font="$lucide_font:14.0" \
            icon.padding_left=0 \
            icon.padding_right=2 \
            padding_left=8 \
            padding_right=0
 
-# RAM usage in GB
+# Network throughput, down/up per second over all en* interfaces, refreshed
+# with cpu/ram on system_interval. Icon: Lucide ethernet-port (U+E620)
+sketchybar --add item network right \
+           --set network \
+           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
+           click_script="open -a 'Activity Monitor'" \
+           icon="" \
+           icon.font="$lucide_font:13.0" \
+           icon.padding_left=0 \
+           icon.padding_right=2 \
+           padding_left=8 \
+           padding_right=0
+
+# RAM usage in GB. Icon: Lucide memory-stick (U+E445)
 sketchybar --add item ram right \
            --set ram \
            label.font="JetbrainsMono Nerd Font:Bold:13.0" \
            click_script="open -a 'Activity Monitor'" \
-           icon.drawing=off \
+           icon="" \
+           icon.font="$lucide_font:13.0" \
+           icon.padding_left=0 \
+           icon.padding_right=2 \
            padding_left=8 \
            padding_right=0
 
-# CPU usage in percent
+# CPU usage in percent. Icon: Lucide gauge (U+E1BF)
 sketchybar --add item cpu right \
            --set cpu \
            label.font="JetbrainsMono Nerd Font:Bold:13.0" \
            click_script="open -a 'Activity Monitor'" \
-           icon.drawing=off \
+           icon="" \
+           icon.font="$lucide_font:13.0" \
+           icon.padding_left=0 \
+           icon.padding_right=2 \
            padding_left=8 \
            padding_right=0
 
 sketchybar --add item brew right \
            --set brew click_script="open -na kitty --args --hold brew upgrade" \
-           icon.font="JetbrainsMono Nerd Font:Bold:12.5" \
+           icon.font="$lucide_font:13.0" \
            icon.padding_left=0 \
            icon.padding_right=2 \
            padding_left=8 \
            padding_right=0
 
-# Weather (FMI open data) — added after brew so it renders to the LEFT of it,
-# since right items lay out right-to-left in order of addition.
-sketchybar --add item weather right \
-           --set weather \
-           click_script="open -na kitty --args $HOME/.local/bin/forecastui" \
-           icon.font="JetbrainsMono Nerd Font:Bold:15.0" \
-           label.font="JetbrainsMono Nerd Font:Bold:13.0" \
-           icon.padding_left=0 \
-           icon.padding_right=4 \
-           padding_left=8 \
-           padding_right=0
+##### Weather (FMI open data) #####
+# Two items, painted by sketchybartender, which also decides which displays
+# each one is shown on (display_change re-runs that):
+#   weather       right of the notch ("e"), built-in display only
+#   weather.wide  centered, displays without a notch
+# Both stay hidden until the first reading arrives.
+weather_props=(
+  click_script="open -na kitty --args $HOME/.local/bin/forecastui"
+  icon.font="$lucide_font:15.0"
+  label.font="JetbrainsMono Nerd Font:Bold:13.0"
+  icon.padding_left=0
+  icon.padding_right=4
+  padding_left=8
+  padding_right=0
+  drawing=off
+)
+sketchybar --add item weather e \
+           --subscribe weather display_change \
+           --set weather "${weather_props[@]}" \
+           padding_left=0 \
+           script="$HOME/.local/bin/sketchycli on-display-configuration-changed"
+sketchybar --add item weather.wide center \
+           --set weather.wide "${weather_props[@]}"
 
 sketchybar --update
+
+# Start the daemon after the items exist. It paints every item once at
+# startup, and a paint for an item that is not there yet is lost (the weather
+# item then stays empty until the next refresh interval).
+pkill -f "${HOME}/.local/bin/sketchybartender" 2>/dev/null
+sleep 0.2
+nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &

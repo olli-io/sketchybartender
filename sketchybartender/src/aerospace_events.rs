@@ -22,7 +22,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::aerospace_socket::{self, Subscription};
-use crate::handlers::{handle_focus_refresh, DaemonState};
+use crate::handlers::DaemonState;
 use crate::window_watch::{self, refresh_workspaces};
 
 /// Spawn the background threads that keep the bar in sync with AeroSpace: one
@@ -84,16 +84,11 @@ fn dispatch(event: &serde_json::Value, state: &Arc<Mutex<DaemonState>>, nudge_tx
         "focused-workspace-changed" | "window-detected" | "focused-monitor-changed" => {
             refresh_workspaces(state);
         }
-        // The focused window changed — refresh the front_app item. We don't get
-        // an app name in the event, so pass None and let the handler query
-        // AeroSpace for the focused app.
-        //
-        // This is also the only notification we get when the focused window is
-        // closed, so nudge the watcher: it makes the common case (closing the
-        // window you're looking at) repaint promptly instead of waiting out the
-        // poll interval.
+        // The focused window changed. This is also the only notification we
+        // get when the focused window is closed, so nudge the watcher: it makes
+        // the common case (closing the window you're looking at) repaint
+        // promptly instead of waiting out the poll interval.
         "focus-changed" => {
-            handle_focus_refresh(None, state);
             let _ = nudge_tx.send(());
         }
         // mode-changed / binding-triggered / anything else: nothing to draw.

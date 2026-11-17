@@ -41,13 +41,13 @@ pub struct Config {
     pub weather_interval: u64,
     /// Workspace background color (default: 0xfff38ba8)
     pub workspace_bg_color: String,
-    /// Workspace focused label color (default: 0xff1d2021)
+    /// Color of the focused workspace ID (default: 0xff1d2021)
     pub workspace_focused_label_color: String,
-    /// Workspace focused icon color (default: 0xff1d2021)
+    /// Color of the window dots on the focused workspace (default: 0xffd8a657, gruvbox material yellow)
     pub workspace_focused_icon_color: String,
-    /// Workspace unfocused label color (default: 0xffffffff)
+    /// Color of an unfocused workspace ID (default: 0xffF5EEE2)
     pub workspace_unfocused_label_color: String,
-    /// Workspace unfocused icon color (default: 0xffffffff)
+    /// Color of the window dots on an unfocused workspace (default: 0xffF5EEE2)
     pub workspace_unfocused_icon_color: String,
     /// Border active color (default: gradient(top_left=0xffbb60cd,bottom_right=0xffffad00))
     pub border_active_color: String,
@@ -77,7 +77,7 @@ impl Default for Config {
             weather_interval: 600,
             workspace_bg_color: "0xffbb60cd".to_string(),
             workspace_focused_label_color: "0xff1d2021".to_string(),
-            workspace_focused_icon_color: "0xff1d2021".to_string(),
+            workspace_focused_icon_color: "0xffd8a657".to_string(),
             workspace_unfocused_label_color: "0xffF5EEE2".to_string(),
             workspace_unfocused_icon_color: "0xffF5EEE2".to_string(),
             border_active_color: "gradient(top_left=0xffbb60cd,bottom_right=0xffffad00)".to_string(),

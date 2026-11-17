@@ -27,6 +27,23 @@ mkdir -p "${CONFIG_DIR}"
 # Get the directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Lucide icon font (https://lucide.dev), used for all bar icons. Codepoints
+# change between Lucide releases, so the version is pinned to the one the
+# daemon's glyphs come from.
+LUCIDE_VERSION="1.74.0"
+FONT_DIR="${HOME}/Library/Fonts"
+if [[ ! -f "${FONT_DIR}/lucide.ttf" ]]; then
+    echo "==> Installing Lucide icon font ${LUCIDE_VERSION}..."
+    FONT_TMP="$(mktemp -d)"
+    curl -fsSL -o "${FONT_TMP}/lucide-font.zip" \
+        "https://github.com/lucide-icons/lucide/releases/download/${LUCIDE_VERSION}/lucide-font-${LUCIDE_VERSION}.zip"
+    unzip -qo "${FONT_TMP}/lucide-font.zip" -d "${FONT_TMP}"
+    mkdir -p "${FONT_DIR}"
+    cp -f "${FONT_TMP}/lucide-font/lucide.ttf" "${FONT_DIR}/lucide.ttf"
+    rm -rf "${FONT_TMP}"
+    echo "✓ Lucide font installed to ${FONT_DIR}/lucide.ttf"
+fi
+
 echo "==> Building sketchybartender..."
 
 # Check if sketchybartender Cargo.toml exists

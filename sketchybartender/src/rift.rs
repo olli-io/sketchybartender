@@ -4,10 +4,11 @@
 //! (`git.acsandmann.rift`) with JSON payloads. We use Rift's own `rift-client`
 //! crate, which talks to the same service as `rift-cli`.
 //!
-//! Workspace IDs on the bar are the 1-based Rift workspace index ("1", "2",
-//! ...), so they agree with the `workspace.N` items in sketchybarrc. In Rift's
-//! default `per_display` mode, two displays can each have a workspace "1". A
-//! sketchybar item can be on one display only, so the focused one wins.
+//! The bar ID of a workspace is its name when the name is one of the
+//! `workspace.N` items in sketchybarrc (one character, 1-9 or a-z). Otherwise
+//! it is the 1-based Rift workspace index ("1", "2", ...). In Rift's default
+//! `per_display` mode, two displays can each have a workspace "1". A sketchybar
+//! item can be on one display only, so the focused one wins.
 
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
@@ -24,9 +25,20 @@ struct DisplayWorkspaces {
     is_active_context: bool,
 }
 
-/// Bar ID of a Rift workspace.
+/// Bar ID of a Rift workspace: its name if sketchybarrc has an item for that
+/// name, else its 1-based index.
 fn workspace_id(ws: &WorkspaceData) -> String {
-    (ws.index + 1).to_string()
+    if is_bar_item_name(&ws.name) {
+        ws.name.clone()
+    } else {
+        (ws.index + 1).to_string()
+    }
+}
+
+/// True if sketchybarrc has a `workspace.<name>` item: one character, 1-9 or a-z.
+fn is_bar_item_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!((chars.next(), chars.next()), (Some('1'..='9' | 'a'..='z'), None))
 }
 
 /// Older Rift servers do not send `is_focused`. Then the active workspace on
@@ -74,10 +86,7 @@ fn query_displays() -> Option<Vec<DisplayWorkspaces>> {
 
 /// Get workspace information for the workspaces that have windows, plus the
 /// focused workspace. This agrees with what AeroSpace shows.
-///
-/// # Arguments
-/// * `show_all_windows` - If true, show an icon for each window. If false, show one icon per app.
-pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceInfo> {
+pub fn get_workspace_infos() -> HashMap<String, WorkspaceInfo> {
     let mut result: HashMap<String, WorkspaceInfo> = HashMap::new();
 
     for display in query_displays().unwrap_or_default() {
@@ -94,10 +103,15 @@ pub fn get_workspace_infos(show_all_windows: bool) -> HashMap<String, WorkspaceI
                 }
             }
 
-            let apps = ws.windows.iter().filter_map(window_app_name).collect();
+            // One entry for each window, also for a window without an app name.
+            let apps = ws
+                .windows
+                .iter()
+                .map(|w| window_app_name(w).unwrap_or_default())
+                .collect();
             result.insert(
                 id.clone(),
-                WorkspaceInfo::new(id, apps, focused, display.display_id, show_all_windows),
+                WorkspaceInfo::new(id, apps, focused, display.display_id),
             );
         }
     }
@@ -124,55 +138,33 @@ pub fn window_signature() -> Option<String> {
     Some(lines.join("\n"))
 }
 
-/// The name of the frontmost app.
-pub fn focused_app_name() -> Option<String> {
+/// Find the Rift workspace that has a bar ID (see `workspace_id`). In global
+/// mode, the list has the workspaces of all displays.
+fn find_workspace(workspace: &str) -> Result<WorkspaceData, String> {
+    let workspace = workspace.trim();
     RiftMachClient
-        .get_applications()
-        .ok()?
+        .get_workspaces(None)
+        .map_err(|e| e.to_string())?
         .into_iter()
-        .find(|app| app.is_frontmost)
-        .map(|app| app.name)
+        .find(|ws| workspace_id(ws) == workspace)
+        .ok_or_else(|| format!("'{}' is not a Rift workspace", workspace))
 }
 
-/// The app name of a window, from the payload of a `focused_window_changed` event.
-pub fn window_app_name_for(window_id: rift_client::WindowId) -> Option<String> {
-    RiftMachClient
-        .get_window_info(window_id)
-        .ok()
-        .and_then(|w| window_app_name(&w))
-}
-
-/// Parse a bar workspace ID ("1", "2", ...) into a 0-based Rift index.
-fn parse_workspace(workspace: &str) -> Result<usize, String> {
-    match workspace.trim().parse::<usize>() {
-        Ok(n) if n >= 1 => Ok(n - 1),
-        _ => Err(format!("'{}' is not a Rift workspace number (1, 2, ...)", workspace)),
-    }
-}
-
-/// Switch to a workspace on the active display.
+/// Switch to a workspace.
 pub fn focus_workspace(workspace: &str) -> Result<(), String> {
-    let index = parse_workspace(workspace)?;
+    let index = find_workspace(workspace)?.index;
     RiftMachClient
         .execute(RiftCommand::Layout(LayoutCommand::SwitchToWorkspace(index)))
         .map(|_| ())
         .map_err(|e| e.to_string())
 }
 
-/// Bundle IDs of the windows in a workspace on the active display.
+/// Bundle IDs of the windows in a workspace.
 pub fn workspace_bundle_ids(workspace: &str) -> Vec<String> {
-    let Ok(index) = parse_workspace(workspace) else {
-        return Vec::new();
-    };
-    match RiftMachClient.get_workspaces(None) {
-        Ok(workspaces) => workspaces
-            .into_iter()
-            .filter(|ws| ws.index == index)
-            .flat_map(|ws| ws.windows)
-            .filter_map(|w| w.bundle_id)
-            .collect(),
+    match find_workspace(workspace) {
+        Ok(ws) => ws.windows.into_iter().filter_map(|w| w.bundle_id).collect(),
         Err(e) => {
-            eprintln!("[rift] Failed to get workspaces: {}", e);
+            eprintln!("[rift] Failed to get workspace: {}", e);
             Vec::new()
         }
     }
@@ -237,10 +229,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_workspace() {
-        assert_eq!(parse_workspace("1"), Ok(0));
-        assert_eq!(parse_workspace("10"), Ok(9));
-        assert!(parse_workspace("0").is_err());
-        assert!(parse_workspace("a").is_err());
+    fn test_is_bar_item_name() {
+        assert!(is_bar_item_name("1"));
+        assert!(is_bar_item_name("9"));
+        assert!(is_bar_item_name("a"));
+        assert!(is_bar_item_name("z"));
+        assert!(!is_bar_item_name("0"));
+        assert!(!is_bar_item_name("10"));
+        assert!(!is_bar_item_name("A"));
+        assert!(!is_bar_item_name("first"));
+        assert!(!is_bar_item_name(""));
     }
 }

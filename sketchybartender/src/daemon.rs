@@ -13,7 +13,7 @@ use crate::handlers::{
     handle_brew_refresh,
     handle_brew_upgrade,
     handle_clock_refresh,
-    handle_focus_refresh,
+    handle_display_changed,
     handle_focus_workspace,
     handle_system_refresh,
     handle_teams_clicked,
@@ -37,10 +37,6 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
                 let vol = parts.get(1).and_then(|s| s.parse().ok());
                 handle_volume_refresh(vol);
             }
-            Some("on-focus-changed") => {
-                let app_name = parts.get(1).map(|s| s.to_string());
-                handle_focus_refresh(app_name, &state);
-            }
             Some("on-workspace-changed") => {
                 handle_workspace_refresh(&state);
             }
@@ -59,6 +55,7 @@ pub fn handle_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
             Some("trigger-teams-refresh") => handle_teams_refresh(),
             Some("on-display-configuration-changed") => {
                 handle_workspace_refresh(&state);
+                handle_display_changed();
             }
             Some("on-power-source-changed") => {
                 let power_source = parts.get(1).map(|s| s.to_string());

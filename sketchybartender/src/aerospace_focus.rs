@@ -1,7 +1,8 @@
 //! Workspace focus helper: substitute for `aerospace focus <workspace>` that
 //! also ensures the configured app is running in the workspace. It works with
 //! each window manager that `wm` supports; the config path keeps its AeroSpace
-//! name for compatibility. With Rift, the keys are workspace numbers ("1", "2", ...).
+//! name for compatibility. With Rift, the keys are the bar workspace IDs: the
+//! workspace name if it is 1-9 or a-z, else the 1-based workspace number.
 //!
 //! Config file: $XDG_CONFIG_HOME/aerospace/aerospace-workspaces.json
 //!              (or ~/.config/aerospace/aerospace-workspaces.json)
