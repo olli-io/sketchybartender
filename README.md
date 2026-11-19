@@ -44,10 +44,11 @@ This will:
 - Build and install `sketchycli` (CLI tool)
 - Copy configuration files to `~/.config/sketchybar/`
 - Backup your existing sketchybarrc if present
+- Install a LaunchAgent that starts `sketchybartender` at login, and start it
 
 ### 3. Select the window manager
 
-Set `window_manager` in `~/.config/sketchybar/sketchybartender.json` and restart sketchybar (`sketchybar --reload`):
+Set `window_manager` in `~/.config/sketchybar/sketchybartender.json` and restart the daemon (`launchctl kickstart -k gui/$(id -u)/local.sketchybartender`):
 
 ```json
 {
@@ -66,6 +67,7 @@ Rift notes:
 
 - The bar shows a Rift workspace by its name if the name is one character, `1`-`9` or `a`-`z` (set `workspace_names` in the Rift config). Otherwise it shows the 1-based workspace index. A click on an item switches to that workspace.
 - In Rift's `per_display` mode, each display has a workspace "1". Sketchybar can show an item on one display only, so the bar shows the focused display's workspace. Use `global` mode to see all workspaces on a multi-display setup.
+- `rift_center_strip_on_close` (default `true`): when a window closes on a scrolling workspace, the daemon tells Rift to center the selection so the neighbor that gains focus scrolls into view. Rift 0.8.3 does not do this itself, even with `focus_navigation_style = "anchored"`. Set to `false` to disable.
 
 ### 4. Ensure PATH is Set
 
@@ -87,15 +89,31 @@ Configuration:
 - `~/.config/sketchybar/sketchybarrc`
 - `~/.config/sketchybar/sketchybartenderrc`
 
+Login entry:
+
+- `~/Library/LaunchAgents/local.sketchybartender.plist`
+
 ## Usage
 
-The daemons are automatically started by sketchybar. You can configure update intervals in `~/.config/sketchybar/sketchybartenderrc`.
+`sketchybartender` is started at login by its own LaunchAgent (`~/Library/LaunchAgents/local.sketchybartender.plist`), which waits for sketchybar to build its items first. Sketchybar does not restart it: after a `sketchybar --reload`, items stay empty until the daemon's next refresh. To repaint at once, restart the daemon:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/local.sketchybartender
+```
+
+Logs are in `/tmp/sketchybartender.out.log` and `/tmp/sketchybartender.err.log`.
+
+You can configure update intervals in `~/.config/sketchybar/sketchybartenderrc`.
 
 ## Uninstall
 
 To fire sketchybar-employees:
 
 ```bash
+
+# Stop the daemon and remove its login entry
+launchctl bootout gui/$(id -u)/local.sketchybartender
+rm -f ~/Library/LaunchAgents/local.sketchybartender.plist
 
 # Remove the binaries
 rm -f ~/.local/bin/sketchybartender

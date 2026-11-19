@@ -149,9 +149,8 @@ sketchybar --add item weather.wide center \
 
 sketchybar --update
 
-# Start the daemon after the items exist. It paints every item once at
-# startup, and a paint for an item that is not there yet is lost (the weather
-# item then stays empty until the next refresh interval).
-pkill -f "${HOME}/.local/bin/sketchybartender" 2>/dev/null
-sleep 0.2
-nohup "${HOME}/.local/bin/sketchybartender" >/dev/null 2>&1 &
+# sketchybartender is started at login by its own LaunchAgent
+# (~/Library/LaunchAgents/local.sketchybartender.plist), which waits for the
+# items above to exist. It is no longer restarted from here, so after a
+# `sketchybar --reload` items stay empty until the daemon's next refresh; run
+# `launchctl kickstart -k gui/$(id -u)/local.sketchybartender` to repaint now.

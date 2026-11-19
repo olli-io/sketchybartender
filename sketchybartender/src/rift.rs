@@ -159,6 +159,27 @@ pub fn focus_workspace(workspace: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Re-center the focused column when the focused workspace is scrolling.
+///
+/// Rift 0.8.3 does not re-anchor the strip when a window closes: focus moves to
+/// the neighbor, but the neighbor is not scrolled into view (even with
+/// `focus_navigation_style = "anchored"`). `CenterSelection` anchors it. This is
+/// a no-op for non-scrolling layouts, which have no strip to center.
+pub fn center_focused_scrolling_strip() -> Result<(), String> {
+    let focused_is_scrolling = RiftMachClient
+        .get_workspaces(None)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .any(|ws| ws.is_focused && ws.layout_mode == "scrolling");
+    if !focused_is_scrolling {
+        return Ok(());
+    }
+    RiftMachClient
+        .execute(RiftCommand::Layout(LayoutCommand::CenterSelection))
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Bundle IDs of the windows in a workspace.
 pub fn workspace_bundle_ids(workspace: &str) -> Vec<String> {
     match find_workspace(workspace) {

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.sketchybartender</string>
+	<key>ProgramArguments</key>
+	<array>
+		<!-- The daemon paints every item once at startup, and a paint for an
+		     item that does not exist yet is lost. Wait (up to 30 s) until
+		     sketchybar has built its last item before starting. -->
+		<string>/bin/sh</string>
+		<string>-c</string>
+		<string>i=0; until sketchybar --query weather.wide >/dev/null 2>&amp;1 || [ $i -ge 60 ]; do sleep 0.5; i=$((i+1)); done; exec "$HOME/.local/bin/sketchybartender"</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LANG</key>
+		<string>en_US.UTF-8</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>Crashed</key>
+		<true/>
+	</dict>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>StandardOutPath</key>
+	<string>/tmp/sketchybartender.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/sketchybartender.err.log</string>
+</dict>
+</plist>

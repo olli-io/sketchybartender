@@ -86,6 +86,27 @@ else
     echo "Warning: sketchybar not found on PATH, skipping reload"
 fi
 
+# Install the LaunchAgent that starts sketchybartender at login, and (re)start
+# the daemon through it so the new binary runs now.
+AGENT_LABEL="local.sketchybartender"
+AGENT_DIR="${HOME}/Library/LaunchAgents"
+AGENT_PLIST="${AGENT_DIR}/${AGENT_LABEL}.plist"
+AGENT_TARGET="gui/$(id -u)/${AGENT_LABEL}"
+mkdir -p "${AGENT_DIR}"
+launchctl bootout "${AGENT_TARGET}" 2>/dev/null || true
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    launchctl print "${AGENT_TARGET}" &> /dev/null || break
+    sleep 0.3
+done
+# A daemon started by an older sketchybarrc is not under launchd.
+pkill -f "${INSTALL_DIR}/${BARTENDER_BINARY}" 2>/dev/null || true
+cp -f "${SCRIPT_DIR}/${AGENT_LABEL}.plist" "${AGENT_PLIST}"
+if launchctl bootstrap "gui/$(id -u)" "${AGENT_PLIST}"; then
+    echo "✓ sketchybartender LaunchAgent installed and started (${AGENT_PLIST})"
+else
+    echo "Warning: could not load ${AGENT_PLIST}; load it with: launchctl bootstrap gui/\$(id -u) ${AGENT_PLIST}"
+fi
+
 echo ""
 echo "==> Installation complete!"
 echo ""
@@ -96,4 +117,7 @@ echo ""
 echo "Configuration:"
 echo "  - ${CONFIG_DIR}/sketchybartenderrc.(default).json"
 echo "  - ${CONFIG_DIR}/sketchybarrc"
+echo ""
+echo "Login entry:"
+echo "  - ${AGENT_PLIST}"
 echo ""

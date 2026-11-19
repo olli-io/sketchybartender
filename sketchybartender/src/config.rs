@@ -9,6 +9,10 @@ fn default_weather_interval() -> u64 {
     600
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// The window manager that supplies workspace and focus data.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -26,6 +30,12 @@ pub struct Config {
     /// Window manager integration: "aerospace" (default) or "rift"
     #[serde(default)]
     pub window_manager: WindowManager,
+    /// Rift only: re-center the scrolling strip when a window closes, so the
+    /// neighbor that gains focus is scrolled into view (default: true).
+    /// Rift 0.8.3 does not do this itself even with `focus_navigation_style =
+    /// "anchored"`. Set to false to disable.
+    #[serde(default = "default_true")]
+    pub rift_center_strip_on_close: bool,
     /// Clock update interval (default: 15 seconds)
     pub clock_interval: u64,
     /// Battery update interval (default: 120 seconds)
@@ -69,6 +79,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             window_manager: WindowManager::default(),
+            rift_center_strip_on_close: true,
             clock_interval: 15,
             battery_interval: 120,
             brew_interval: 3600,

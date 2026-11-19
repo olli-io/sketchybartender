@@ -1,5 +1,6 @@
 {
   "window_manager": "aerospace",
+  "rift_center_strip_on_close": true,
   "clock_interval": 15,
   "battery_interval": 120,
   "brew_interval": 3600,

@@ -140,11 +140,23 @@ fn dispatch(event: &serde_json::Value, state: &Arc<Mutex<DaemonState>>, nudge_tx
     let kind = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
     match kind {
-        // The active workspace changed, or the windows in a workspace changed
-        // (this includes a closed window).
-        "workspace_changed" | "windows_changed" => {
+        // The windows in a workspace changed (this includes a closed window).
+        // Rift does not re-anchor the scrolling strip on a close, so the
+        // neighbor that gains focus is not scrolled into view: center it.
+        "windows_changed" => {
+            let center = state.lock().map(|s| s.config.rift_center_strip_on_close).unwrap_or(true);
+            if center {
+                if let Err(e) = crate::rift::center_focused_scrolling_strip() {
+                    eprintln!("[rift-events] Failed to center selection: {}", e);
+                }
+            }
             refresh_workspaces(state);
             // The repaint can be debounced. The watcher finds what it dropped.
+            let _ = nudge_tx.send(());
+        }
+        // The active workspace changed.
+        "workspace_changed" => {
+            refresh_workspaces(state);
             let _ = nudge_tx.send(());
         }
         // Focus, layout, stacks, titles, binding mode, config: nothing to draw.
